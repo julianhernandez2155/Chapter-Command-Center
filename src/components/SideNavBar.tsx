@@ -19,16 +19,14 @@ import {
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { OFFICER_POSITIONS } from './ProtectedRoute';
 
 export const SideNavBar = () => {
-  const { roles, signOut } = useAuth();
+  const { can, canAny, signOut } = useAuth();
 
-  const hasAnyRole = (allowedRoles: string[]) => roles.some(role => allowedRoles.includes(role));
-  const isOfficer = roles.some(role => OFFICER_POSITIONS.includes(role));
-  const canManageRecords = hasAnyRole(['president', 'secretary']);
-  const canReviewExcusals = hasAnyRole(['president', 'secretary', 'saa']);
-  const canViewFinance = hasAnyRole(['president', 'secretary', 'treasurer', 'assistant_treasurer']);
+  const canManageRecords = canAny(['attendance.import', 'forms.builder.manage', 'positions.manage']);
+  const canReviewExcusals = can('excusals.review');
+  const canViewFinance = can('finance.dues.view');
+  const canUseOfficerWorkflows = canAny(['forms.intake', 'reports.submit', 'reports.view_all', 'forms.responses.view']);
 
   return (
     <aside className="h-screen w-20 hover:w-64 transition-all duration-300 ease-in-out fixed left-0 top-0 z-50 bg-surface-container-lowest border-r border-white/5 flex flex-col py-8 overflow-hidden group shadow-[24px_0_48px_rgba(0,0,0,0.4)]">
@@ -44,21 +42,21 @@ export const SideNavBar = () => {
 
       <nav className="flex-1 space-y-1 px-4 overflow-y-auto no-scrollbar pb-10">
         <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Command" />
-        {canManageRecords && <NavItem to="/attendance" icon={<CheckSquare size={20} />} label="Attendance" />}
+        {can('attendance.import') && <NavItem to="/attendance" icon={<CheckSquare size={20} />} label="Attendance" />}
         <NavItem to="/events" icon={<Calendar size={20} />} label="Events" />
-        <NavItem to="/roster" icon={<Users size={20} />} label="Members" />
+        {can('roster.view') && <NavItem to="/roster" icon={<Users size={20} />} label="Members" />}
         
         <div className="py-2 opacity-20 group-hover:opacity-100 transition-opacity">
           <div className="h-px bg-white/10 mx-2 my-2" />
           <p className="text-[8px] font-black uppercase tracking-[0.3rem] text-zinc-500 px-3 hidden group-hover:block">Forms & Requests</p>
         </div>
 
-        {isOfficer && <NavItem to="/forms/intake" icon={<FileEdit size={20} />} label="Form Intake" />}
-        {isOfficer && <NavItem to="/dashboard/report" icon={<FileEdit size={20} />} label="Chairman Report" />}
+        {can('forms.intake') && <NavItem to="/forms/intake" icon={<FileEdit size={20} />} label="Form Intake" />}
+        {can('reports.submit') && <NavItem to="/dashboard/report" icon={<FileEdit size={20} />} label="Chairman Report" />}
         <NavItem to="/excusals/status" icon={<Clock size={20} />} label="My Excusals" />
         {canViewFinance && <NavItem to="/finance/dues" icon={<CreditCard size={20} />} label="Dues" />}
 
-        {(isOfficer || canManageRecords || canReviewExcusals) && (
+        {(canUseOfficerWorkflows || canManageRecords || canReviewExcusals) && (
           <div className="py-2 opacity-20 group-hover:opacity-100 transition-opacity">
             <div className="h-px bg-white/10 mx-2 my-2" />
             <p className="text-[8px] font-black uppercase tracking-[0.3rem] text-zinc-500 px-3 hidden group-hover:block">Admin Protocol</p>
@@ -66,9 +64,9 @@ export const SideNavBar = () => {
         )}
 
         {canManageRecords && <NavItem to="/forms/secretary" icon={<Layers size={20} />} label="Secretary Hub" />}
-        {isOfficer && <NavItem to="/admin/reports" icon={<Layers size={20} />} label="Reports View" />}
-        {canManageRecords && <NavItem to="/forms/builder" icon={<PenTool size={20} />} label="Form Builder" />}
-        {isOfficer && <NavItem to="/forms/responses" icon={<BarChart3 size={20} />} label="Responses" />}
+        {can('reports.view_all') && <NavItem to="/admin/reports" icon={<Layers size={20} />} label="Reports View" />}
+        {can('forms.builder.manage') && <NavItem to="/forms/builder" icon={<PenTool size={20} />} label="Form Builder" />}
+        {can('forms.responses.view') && <NavItem to="/forms/responses" icon={<BarChart3 size={20} />} label="Responses" />}
         {canReviewExcusals && <NavItem to="/excusals/review" icon={<Shield size={20} />} label="Excusal Review" />}
         <NavItem to="/archive" icon={<History size={20} />} label="Archive" />
       </nav>

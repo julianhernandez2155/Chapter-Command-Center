@@ -2,35 +2,26 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ShieldAlert } from 'lucide-react';
-
-export const OFFICER_POSITIONS = [
-  'president',
-  'ivp',
-  'evp',
-  'secretary',
-  'treasurer',
-  'saa',
-  'recruitment_chairman',
-  'vpmd',
-  'hs_officer',
-  'past_president',
-  'housing_manager',
-  'scholarship_chairman',
-  'assistant_treasurer'
-];
+import { Permission, hasAllPermissions, hasAnyPermission, isOfficerPosition } from '../lib/permissions';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: string[];
   requireOfficer?: boolean;
+  permission?: Permission;
+  anyPermissions?: Permission[];
+  allPermissions?: Permission[];
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedRoles = [],
-  requireOfficer = false
+  requireOfficer = false,
+  permission,
+  anyPermissions = [],
+  allPermissions = []
 }) => {
-  const { user, member, roles, loading } = useAuth();
+  const { user, member, roles, permissions, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -57,12 +48,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // 3. Authenticated & Onboarded -> Check role requirements
-  const isOfficer = roles.some(role => OFFICER_POSITIONS.includes(role));
+  const isOfficer = roles.some(isOfficerPosition);
 
   const hasAllowedRole = allowedRoles.length === 0 || roles.some(role => allowedRoles.includes(role));
   const satisfiesOfficerReq = !requireOfficer || isOfficer;
+  const satisfiesSinglePermission = !permission || permissions.includes(permission);
+  const satisfiesAnyPermissions = anyPermissions.length === 0 || hasAnyPermission(permissions, anyPermissions);
+  const satisfiesAllPermissions = allPermissions.length === 0 || hasAllPermissions(permissions, allPermissions);
 
-  const isAuthorized = hasAllowedRole && satisfiesOfficerReq;
+  const isAuthorized = hasAllowedRole
+    && satisfiesOfficerReq
+    && satisfiesSinglePermission
+    && satisfiesAnyPermissions
+    && satisfiesAllPermissions;
 
   if (!isAuthorized) {
     return (

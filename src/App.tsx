@@ -90,14 +90,14 @@ const AppContent = () => {
               <Routes location={location}>
                 {/* General dashboard: available to any active member */}
                 <Route path="/dashboard" element={
-                  <ProtectedRoute>
+                  <ProtectedRoute permission="dashboard.view">
                     <Positions />
                   </ProtectedRoute>
                 } />
 
                 {/* Chairman weekly section report: restricted to officers */}
                 <Route path="/dashboard/report" element={
-                  <ProtectedRoute requireOfficer>
+                  <ProtectedRoute permission="reports.submit">
                     <ChairmanReport />
                   </ProtectedRoute>
                 } />
@@ -116,14 +116,14 @@ const AppContent = () => {
 
                 {/* Attendance import (Data Protocol): Restricted to President/Secretary */}
                 <Route path="/attendance" element={
-                  <ProtectedRoute allowedRoles={['president', 'secretary']}>
+                  <ProtectedRoute permission="attendance.import">
                     <ImportAttendance />
                   </ProtectedRoute>
                 } />
 
                 {/* Forms Intake: Restricted to officers */}
                 <Route path="/forms/intake" element={
-                  <ProtectedRoute requireOfficer>
+                  <ProtectedRoute permission="forms.intake">
                     <FormIntake />
                   </ProtectedRoute>
                 } />
@@ -137,28 +137,28 @@ const AppContent = () => {
 
                 {/* Form Builder: Restricted to President/Secretary */}
                 <Route path="/forms/builder" element={
-                  <ProtectedRoute allowedRoles={['president', 'secretary']}>
+                  <ProtectedRoute permission="forms.builder.manage">
                     <FormBuilder />
                   </ProtectedRoute>
                 } />
 
                 {/* View form responses: Restricted to officers */}
                 <Route path="/forms/responses" element={
-                  <ProtectedRoute requireOfficer>
+                  <ProtectedRoute permission="forms.responses.view">
                     <FormResponses />
                   </ProtectedRoute>
                 } />
 
                 {/* Secretary Hub: Restricted to President/Secretary */}
                 <Route path="/forms/secretary" element={
-                  <ProtectedRoute allowedRoles={['president', 'secretary']}>
+                  <ProtectedRoute anyPermissions={['attendance.import', 'forms.builder.manage', 'positions.manage']}>
                     <SecretaryHub />
                   </ProtectedRoute>
                 } />
 
                 {/* Excusal Review: Restricted to President, Secretary, SAA */}
                 <Route path="/excusals/review" element={
-                  <ProtectedRoute allowedRoles={['president', 'secretary', 'saa']}>
+                  <ProtectedRoute permission="excusals.review">
                     <ExcusalReview />
                   </ProtectedRoute>
                 } />
@@ -172,21 +172,21 @@ const AppContent = () => {
 
                 {/* Admin consolidated compliance reports: Restricted to officers */}
                 <Route path="/admin/reports" element={
-                  <ProtectedRoute requireOfficer>
+                  <ProtectedRoute permission="reports.view_all">
                     <AdminReports />
                   </ProtectedRoute>
                 } />
 
                 {/* Dues Tracking (Finance): Restricted to President, Secretary, Treasurer, Assistant Treasurer */}
                 <Route path="/finance/dues" element={
-                  <ProtectedRoute allowedRoles={['president', 'secretary', 'treasurer', 'assistant_treasurer']}>
+                  <ProtectedRoute permission="finance.dues.view">
                     <DuesTracking />
                   </ProtectedRoute>
                 } />
 
                 {/* Placeholders */}
                 <Route path="/roster" element={
-                  <ProtectedRoute>
+                  <ProtectedRoute permission="roster.view">
                     <div className="text-center py-20 opacity-20 uppercase font-black tracking-[1rem]">Roster Protocol Pending</div>
                   </ProtectedRoute>
                 } />

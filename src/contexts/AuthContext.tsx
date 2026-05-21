@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { Permission, getPermissionsForPositions, hasAnyPermission, hasPermission } from '../lib/permissions';
+import { LivePosition, fetchCurrentMemberPositions } from '../lib/roster';
 
 export interface MemberProfile {
   id: string;
@@ -33,19 +35,47 @@ interface AuthContextType {
   user: User | null;
   member: MemberProfile | null;
   roles: string[];
+  positions: LivePosition[];
+  permissions: Permission[];
   loading: boolean;
+  can: (permission: Permission) => boolean;
+  canAny: (permissions: Permission[]) => boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_LOAD_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T,>(promise: Promise<T>, message: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), AUTH_LOAD_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
+  const [positions, setPositions] = useState<LivePosition[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const resetProfileState = () => {
+    setMember(null);
+    setRoles([]);
+    setPositions([]);
+  };
 
   const fetchProfileAndRoles = async (currentUser: User) => {
     try {
@@ -58,8 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (memberError) {
         console.error('Error fetching member profile:', memberError);
-        setMember(null);
-        setRoles([]);
+        resetProfileState();
         return;
       }
 
@@ -73,32 +102,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (rolesError) {
           console.error('Error calling user_positions RPC:', rolesError);
           setRoles([]);
+          setPositions([]);
         } else {
-          setRoles(rolesData || []);
+          const roleSlugs = rolesData || [];
+          setRoles(roleSlugs);
+
+          try {
+            setPositions(await fetchCurrentMemberPositions(roleSlugs));
+          } catch (positionsError) {
+            console.error('Error fetching active position records:', positionsError);
+            setPositions([]);
+          }
         }
       } else {
-        setRoles([]);
+        resetProfileState();
       }
     } catch (e) {
       console.error('Unexpected error loading auth profile:', e);
-      setMember(null);
-      setRoles([]);
+      resetProfileState();
     }
   };
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchProfileAndRoles(session.user).finally(() => setLoading(false));
-      } else {
-        setUser(null);
-        setMember(null);
-        setRoles([]);
-        setLoading(false);
+    let isMounted = true;
+
+    const loadInitialSession = async () => {
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          'Timed out while loading Supabase auth session.'
+        );
+
+        if (!isMounted) return;
+
+        if (session?.user) {
+          setUser(session.user);
+          await withTimeout(
+            fetchProfileAndRoles(session.user),
+            'Timed out while loading Supabase member profile.'
+          );
+        } else {
+          setUser(null);
+          resetProfileState();
+        }
+      } catch (err) {
+        console.error('Error loading initial auth session:', err);
+        if (isMounted) {
+          setUser(null);
+          resetProfileState();
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    });
+    };
+
+    void loadInitialSession();
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -106,17 +166,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(true);
         if (session?.user) {
           setUser(session.user);
-          await fetchProfileAndRoles(session.user);
+          try {
+            await withTimeout(
+              fetchProfileAndRoles(session.user),
+              'Timed out while loading Supabase member profile.'
+            );
+          } catch (err) {
+            console.error('Error loading auth profile after state change:', err);
+            resetProfileState();
+          }
         } else {
           setUser(null);
-          setMember(null);
-          setRoles([]);
+          resetProfileState();
         }
         setLoading(false);
       }
     );
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -137,8 +205,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const permissions = useMemo(() => getPermissionsForPositions(roles), [roles]);
+  const can = (permission: Permission) => hasPermission(permissions, permission);
+  const canAny = (requiredPermissions: Permission[]) => hasAnyPermission(permissions, requiredPermissions);
+
   return (
-    <AuthContext.Provider value={{ user, member, roles, loading, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, member, roles, positions, permissions, loading, can, canAny, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
