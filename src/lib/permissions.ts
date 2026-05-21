@@ -41,6 +41,7 @@ export const MEMBER_PERMISSIONS: Permission[] = [
   'dashboard.view',
   'positions.view',
   'events.view',
+  'roster.view',
   'forms.status.view',
   'excusals.status.view',
   'archive.view',

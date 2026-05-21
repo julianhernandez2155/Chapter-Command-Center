@@ -17,6 +17,7 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
     preferredName: '',
     suid: '',
     gradYear: '2027',
+    school: '',
     major: '',
     dorm: '',
     room: '',
@@ -42,8 +43,8 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
         setError('SUID must be exactly 6 digits.');
         return;
       }
-      if (!formData.major.trim()) {
-        setError('Academic Major is required.');
+      if (!formData.school.trim() || !formData.major.trim()) {
+        setError('Academic School and Major are required.');
         return;
       }
     }
@@ -91,6 +92,7 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
             preferred_name: formData.preferredName.trim() || null,
             suid: formData.suid.trim(),
             graduation_year: parseInt(formData.gradYear, 10),
+            college: formData.school.trim(),
             major: formData.major.trim(),
             dorm_location: formData.dorm || null,
             room: formData.room.trim() || null,
@@ -119,6 +121,7 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
             preferred_name: formData.preferredName.trim() || null,
             suid: formData.suid.trim(),
             graduation_year: parseInt(formData.gradYear, 10),
+            college: formData.school.trim(),
             major: formData.major.trim(),
             dorm_location: formData.dorm || null,
             room: formData.room.trim() || null,
@@ -343,7 +346,16 @@ const Step1 = ({ formData, setFormData }: any) => (
             <option>2030</option>
           </select>
         </div>
-        <div className="md:col-span-2 space-y-2">
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">School / College</label>
+          <input
+            className="w-full sunken-input"
+            placeholder="e.g. Whitman School of Management"
+            value={formData.school}
+            onChange={e => setFormData({...formData, school: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Academic Major</label>
           <input 
             className="w-full sunken-input" 
@@ -550,6 +562,7 @@ const Step4 = ({ formData, onSubmit, submitting }: { formData: any; onSubmit: ()
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 gap-x-12 p-8 bg-surface-container-low rounded-lg border border-outline-variant">
           <ReviewItem label="Full Legal Name" value={`${formData.firstName} ${formData.lastName}`} />
           <ReviewItem label="Student Identifier (SUID)" value={formData.suid} />
+          <ReviewItem label="School / College" value={formData.school} />
           <ReviewItem label="Academic Major" value={formData.major} />
           <ReviewItem label="Graduation Year" value={`Class of ${formData.gradYear}`} />
         </div>

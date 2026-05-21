@@ -7,5 +7,6 @@ coverage/
 .antigravity/
 .agents/
 .vscode/
+supabase/.temp/
 .env*
 !.env.example

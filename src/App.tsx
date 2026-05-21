@@ -5,6 +5,7 @@ import { TopAppBar } from './components/TopAppBar';
 import { SignIn } from './pages/SignIn';
 import { Onboarding } from './pages/Onboarding';
 import { Positions } from './pages/Positions';
+import { MemberDirectory } from './pages/MemberDirectory';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
@@ -187,7 +188,7 @@ const AppContent = () => {
                 {/* Placeholders */}
                 <Route path="/roster" element={
                   <ProtectedRoute permission="roster.view">
-                    <div className="text-center py-20 opacity-20 uppercase font-black tracking-[1rem]">Roster Protocol Pending</div>
+                    <MemberDirectory />
                   </ProtectedRoute>
                 } />
                 <Route path="/archive" element={
@@ -224,6 +225,7 @@ const getPageTitle = (pathname: string) => {
   if (pathname === '/excusals/review') return "Excusal Queue";
   if (pathname === '/excusals/status') return "My Excusals";
   if (pathname === '/finance/dues') return "Finance Protocol";
+  if (pathname === '/roster') return "Member Directory";
   return "Chapter Command Center";
 };
 
@@ -237,6 +239,7 @@ const getPageSubtitle = (pathname: string) => {
   if (pathname === '/forms/builder') return "Weekly Form Assembly";
   if (pathname === '/excusals/review') return "IVP Excusal Review Queue";
   if (pathname === '/finance/dues') return "Dues Payment Tracking";
+  if (pathname === '/roster') return "Chapter roster, contact shortcuts, and member profiles";
   return undefined;
 };
 

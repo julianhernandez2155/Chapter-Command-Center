@@ -14,6 +14,7 @@ export interface MemberProfile {
   preferred_name: string | null;
   personal_email: string | null;
   graduation_year: number;
+  school: string | null;
   major: string;
   phone: string | null;
   dorm_location: string | null;
@@ -23,6 +24,12 @@ export interface MemberProfile {
   snapchat: string | null;
   linkedin: string | null;
   venmo: string | null;
+  avatar_url: string | null;
+  pledge_class: string | null;
+  member_since_term: string | null;
+  birthday_month: number | null;
+  birthday_day: number | null;
+  bio: string | null;
   parent_outreach_consent: boolean;
   status: 'active' | 'inactive' | 'suspended' | 'new_member' | 'alumni';
   college: string | null;
