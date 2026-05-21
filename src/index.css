@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: #C41E3A;
+  --color-primary-container: #C41E3A;
+  --color-on-primary-container: #ffffff;
+  
+  --color-secondary: #E6C364;
+  --color-secondary-container: #785D00;
+  --color-on-secondary-container: #FDD977;
+  
+  --color-surface: #131313;
+  --color-surface-container-lowest: #0E0E0E;
+  --color-surface-container-low: #1C1B1B;
+  --color-surface-container-high: #2A2A2A;
+  --color-surface-bright: #3A3939;
+  
+  --color-on-surface: #E5E2E1;
+  --color-on-surface-variant: #A8A2A1;
+  
+  --color-outline-variant: rgba(170, 137, 137, 0.15);
+  
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .editorial-spacing {
+    letter-spacing: 0.15rem;
+  }
+  
+  .sunken-input {
+    @apply bg-surface-container-lowest border-none rounded-lg p-4 focus:ring-1 focus:ring-primary text-on-surface placeholder:text-on-surface-variant/40;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .dashed-border {
+    background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='32' ry='32' stroke='%23AA89894D' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+    border-radius: 2rem;
+  }
+}
