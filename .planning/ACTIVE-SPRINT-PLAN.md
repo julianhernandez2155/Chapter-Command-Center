@@ -42,7 +42,7 @@ Closed in `docs/SPRINT_1_AUTH_FOUNDATION_CLOSEOUT.md`.
 
 ### Sprint 2 — Identity, Roster, Positions, Permissions
 
-Status: next.
+Status: complete.
 
 Goal: replace mock identity/position surfaces with live Supabase data and introduce a small code-level permission registry.
 
@@ -64,7 +64,7 @@ Done means:
 
 ### Sprint 3 — Operations And Events
 
-Status: planned.
+Status: active.
 
 Goal: make events real before attendance depends on them.
 
@@ -128,4 +128,3 @@ From here, build vertical slices:
 3. user action
 4. database write
 5. another persona can see the result
-

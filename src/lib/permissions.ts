@@ -19,6 +19,9 @@ export type Permission =
   | 'positions.view'
   | 'positions.manage'
   | 'events.view'
+  | 'events.create'
+  | 'events.edit'
+  | 'events.archive'
   | 'roster.view'
   | 'attendance.import'
   | 'forms.status.view'
@@ -62,6 +65,7 @@ export const OFFICER_POSITION_SLUGS = [
 ] as const;
 
 const OFFICER_WORKFLOW_PERMISSIONS: Permission[] = [
+  'events.create',
   'forms.intake',
   'forms.responses.view',
   'reports.submit',
@@ -69,6 +73,7 @@ const OFFICER_WORKFLOW_PERMISSIONS: Permission[] = [
 ];
 
 const CHAIRMAN_WORKFLOW_PERMISSIONS: Permission[] = [
+  'events.create',
   'forms.intake',
   'forms.responses.view',
   'reports.submit'
@@ -78,6 +83,8 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   president: [
     'roster.view',
     'positions.manage',
+    'events.edit',
+    'events.archive',
     'attendance.import',
     'forms.builder.manage',
     'excusals.review',
@@ -86,6 +93,8 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   secretary: [
     'roster.view',
     'positions.manage',
+    'events.edit',
+    'events.archive',
     'attendance.import',
     'forms.builder.manage',
     'excusals.review',

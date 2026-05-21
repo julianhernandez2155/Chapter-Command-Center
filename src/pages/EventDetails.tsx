@@ -1,58 +1,191 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ArrowLeft, 
-  QrCode, 
-  Users, 
-  Clock, 
-  MapPin, 
-  FileText, 
-  MoreVertical, 
-  CheckCircle2, 
-  XCircle, 
-  UserPlus,
-  Download,
-  Search,
-  ChevronRight
+import {
+  AlertCircle,
+  ArrowLeft,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Edit3,
+  FileText,
+  Loader2,
+  MapPin,
+  MoreVertical,
+  QrCode,
+  RotateCcw,
+  Users,
+  XCircle
 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
-import { MOCK_EVENTS, MOCK_MEMBERS } from '@/src/constants';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  archiveEvent,
+  eventToFormValues,
+  fetchEventById,
+  formatEventCategory,
+  formatEventDate,
+  formatEventTimeRange,
+  formatEventType,
+  LiveEvent,
+  restoreEvent,
+  updateEvent
+} from '../lib/events';
+import { EventFormModal } from './Events';
 
 export const EventDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const event = MOCK_EVENTS.find(e => e.id === id) || MOCK_EVENTS[0];
-  const [activeTab, setActiveTab] = useState('Attendance');
+  const { can } = useAuth();
+  const [activeTab, setActiveTab] = useState('Event Details');
+  const [event, setEvent] = useState<Awaited<ReturnType<typeof fetchEventById>>>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canEditEvent = can('events.edit');
+  const canArchiveEvent = can('events.archive');
+
+  const loadEvent = async () => {
+    if (!id) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      setEvent(await fetchEventById(id));
+    } catch (err) {
+      console.error('Error loading event detail:', err);
+      setError('Unable to load event details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadEvent();
+  }, [id]);
+
+  const handleUpdate = async (values: Parameters<typeof updateEvent>[1]) => {
+    if (!event) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updated = await updateEvent(event.id, values);
+      setEvent({ ...updated, attendance: event.attendance });
+      setIsEditOpen(false);
+    } catch (err) {
+      console.error('Error updating event:', err);
+      setError('Unable to update event. Check your permissions and event fields.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchiveToggle = async () => {
+    if (!event) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updated = event.archived_at
+        ? await restoreEvent(event.id)
+        : await archiveEvent(event.id);
+      setEvent({ ...updated, attendance: event.attendance });
+    } catch (err) {
+      console.error('Error changing archive state:', err);
+      setError('Unable to change event archive state.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center gap-3 text-on-surface-variant">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <span className="text-xs font-bold uppercase tracking-[0.2rem]">Loading event</span>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="max-w-4xl mx-auto bg-surface-container-low rounded-2xl border border-white/5 p-10 text-center">
+        <AlertCircle className="w-10 h-10 text-error mx-auto mb-4" />
+        <h1 className="text-2xl font-black tracking-tight">Event not found</h1>
+        <button onClick={() => navigate('/events')} className="mt-6 text-primary text-xs font-black uppercase tracking-widest">Back to Events</button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-12">
-      <div className="flex items-center gap-4">
-        <button 
-          onClick={() => navigate('/events')}
-          className="p-3 hover:bg-surface-container-high rounded-full transition-colors text-on-surface-variant"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex flex-col">
-          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Event Protocol</span>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">{event.name}</h1>
+      <div className="flex items-start justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/events')}
+            className="p-3 hover:bg-surface-container-high rounded-full transition-colors text-on-surface-variant"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Event Protocol</span>
+            <h1 className="text-4xl font-black tracking-tighter uppercase">{event.name}</h1>
+            <div className="mt-2 flex items-center gap-2">
+              <Badge label={formatEventType(event.type)} />
+              <Badge label={formatEventCategory(event.category)} tone={event.category === 'mandatory' ? 'danger' : 'default'} />
+              {event.archived_at && <Badge label="Archived" />}
+            </div>
+          </div>
         </div>
+
+        {(canEditEvent || canArchiveEvent) && (
+          <div className="flex gap-3">
+            {canEditEvent && (
+              <button onClick={() => setIsEditOpen(true)} className="px-5 py-3 rounded-full bg-surface-container-low border border-white/5 text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-surface-container-high">
+                <Edit3 size={14} /> Edit
+              </button>
+            )}
+            {canArchiveEvent && (
+              <button
+                onClick={handleArchiveToggle}
+                disabled={saving}
+                className="px-5 py-3 rounded-full bg-error/10 border border-error/20 text-error text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-error/20 disabled:opacity-50"
+              >
+                {event.archived_at ? <RotateCcw size={14} /> : <XCircle size={14} />}
+                {event.archived_at ? 'Restore' : 'Archive'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {error && (
+        <section className="bg-error/10 rounded-xl p-6 border border-error/20 flex items-center gap-3 text-error">
+          <AlertCircle className="w-5 h-5" />
+          <span className="text-sm font-bold">{error}</span>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Expected" value={event.expectedCount} icon={<Users size={16} />} />
-            <StatCard label="Present" value={event.actualCount} icon={<CheckCircle2 size={16} />} color="text-green-500" />
-            <StatCard label="Excused" value={12} icon={<FileText size={16} />} color="text-secondary" />
-            <StatCard label="Absent" value={event.expectedCount - event.actualCount - 12} icon={<XCircle size={16} />} color="text-red-500" />
+            <StatCard label="Expected" value={event.attendance.expected} icon={<Users size={16} />} />
+            <StatCard label="Present" value={event.attendance.present} icon={<CheckCircle2 size={16} />} color="text-green-500" />
+            <StatCard label="Excused" value={event.attendance.excused} icon={<FileText size={16} />} color="text-secondary" />
+            <StatCard label="Absent" value={event.attendance.absent} icon={<XCircle size={16} />} color="text-red-500" />
           </div>
 
           <div className="bg-surface-container-low rounded-2xl border border-white/5 overflow-hidden">
             <div className="flex border-b border-white/5">
-              {['Attendance', 'Event Details', 'Officer Notes'].map(tab => (
-                <button 
+              {['Event Details', 'Attendance Summary', 'Officer Notes'].map(tab => (
+                <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={cn(
@@ -69,143 +202,122 @@ export const EventDetails = () => {
             </div>
 
             <div className="p-8">
-              {activeTab === 'Attendance' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} />
-                      <input 
-                        className="w-full bg-surface-container-lowest border-none rounded-full py-2.5 pl-12 pr-4 text-xs focus:ring-1 focus:ring-primary/50" 
-                        placeholder="Search roster..."
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-surface-bright transition-colors">
-                        <UserPlus size={14} /> Add Guest
-                      </button>
-                      <button className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-surface-bright transition-colors">
-                        <Download size={14} /> Export
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {MOCK_MEMBERS.map(member => (
-                      <div key={member.id} className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border border-white/5 hover:border-primary/20 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <img src={member.avatar} className="w-10 h-10 rounded-full" alt={member.firstName} />
-                          <div>
-                            <p className="text-sm font-bold">{member.firstName} {member.lastName}</p>
-                            <p className="text-[9px] text-on-surface-variant uppercase tracking-widest">{member.suid} • {member.major}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-6">
-                          <div className="flex flex-col items-end">
-                            <span className="text-[9px] font-bold uppercase tracking-widest text-green-500">Present</span>
-                            <span className="text-[9px] text-on-surface-variant/50 uppercase tracking-widest">19:02 EST</span>
-                          </div>
-                          <button className="p-2 hover:bg-surface-container-high rounded-full transition-colors">
-                            <MoreVertical size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="p-4 bg-surface-container-lowest rounded-xl border border-white/5 opacity-50 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-surface-container-high" />
-                        <div>
-                          <p className="text-sm font-bold">Marcus Thorne</p>
-                          <p className="text-[9px] text-on-surface-variant uppercase tracking-widest">882944103 • Finance</p>
-                        </div>
-                      </div>
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/40">Not Checked In</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'Event Details' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  <div className="space-y-8">
-                    <DetailItem icon={<CalendarIcon size={18} />} label="Date & Time" value={`${event.date} @ ${event.time}`} />
-                    <DetailItem icon={<MapPin size={18} />} label="Location" value={event.location} />
-                    <DetailItem icon={<Clock size={18} />} label="Duration" value="90 Minutes" />
-                  </div>
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2rem] text-on-surface-variant/40">Attendance Policies</h4>
-                    <div className="space-y-3">
-                      <PolicyBadge label="Mandatory" active={event.isMandatory} />
-                      <PolicyBadge label="QR Check-In" active={event.qrEnabled} />
-                      <PolicyBadge label="Excusals Allowed" active={event.allowExcusals} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'Officer Notes' && (
-                <div className="space-y-6">
-                  <div className="p-6 bg-surface-container-lowest rounded-xl border border-primary/20 relative">
-                    <div className="absolute -top-3 left-6 px-3 py-1 bg-primary text-white text-[9px] font-black uppercase tracking-widest rounded-full">Executive Note</div>
-                    <p className="text-sm leading-relaxed text-on-surface/80 italic">
-                      "{event.officerNotes}"
-                    </p>
-                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/40">Posted by Julian Sterling • 2h ago</span>
-                      <button className="text-[9px] font-bold uppercase tracking-widest text-primary hover:underline">Edit Note</button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {activeTab === 'Event Details' && <EventDetailPanel event={event} />}
+              {activeTab === 'Attendance Summary' && <AttendanceSummary event={event} />}
+              {activeTab === 'Officer Notes' && <OfficerNotes event={event} canEdit={canEditEvent} onEdit={() => setIsEditOpen(true)} />}
             </div>
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="bg-primary p-8 rounded-2xl shadow-2xl shadow-primary/20 space-y-6">
+          <div className={cn(
+            "p-8 rounded-2xl shadow-2xl space-y-6",
+            event.check_in_open ? "bg-primary shadow-primary/20" : "bg-surface-container-low border border-white/5"
+          )}>
             <div className="flex items-center justify-between">
-              <h3 className="text-white text-xl font-black uppercase tracking-tighter">Live Check-In</h3>
+              <h3 className={cn("text-xl font-black uppercase tracking-tighter", event.check_in_open ? "text-white" : "text-on-surface")}>Check-In State</h3>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                <span className="text-white/80 text-[10px] font-bold uppercase tracking-widest">Active</span>
+                <div className={cn("w-2 h-2 rounded-full", event.check_in_open ? "bg-white animate-pulse" : "bg-on-surface-variant/30")} />
+                <span className={cn("text-[10px] font-bold uppercase tracking-widest", event.check_in_open ? "text-white/80" : "text-on-surface-variant")}>
+                  {event.check_in_open ? 'Open' : 'Closed'}
+                </span>
               </div>
             </div>
-            <p className="text-white/70 text-xs leading-relaxed">The QR Check-In portal is currently open. Members can check in via their mobile command center.</p>
-            <div className="flex flex-col gap-3">
-              <button className="w-full py-4 bg-white text-primary rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 hover:bg-white/90 transition-all">
-                <QrCode size={18} /> Open QR Portal
-              </button>
-              <button className="w-full py-4 bg-primary-container border border-white/20 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 hover:bg-white/5 transition-all">
-                <XCircle size={18} /> Close Check-In
-              </button>
-            </div>
+            <p className={cn("text-xs leading-relaxed", event.check_in_open ? "text-white/70" : "text-on-surface-variant")}>
+              Check-in controls stay read-only in Sprint 3. Sprint 4 will wire attendance writes after event records are stable.
+            </p>
+            <button disabled className={cn(
+              "w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 opacity-60",
+              event.check_in_open ? "bg-white text-primary" : "bg-surface-container-high text-on-surface-variant"
+            )}>
+              <QrCode size={18} /> QR Portal Pending
+            </button>
           </div>
 
           <div className="bg-surface-container-low p-8 rounded-2xl border border-white/5 space-y-6">
-            <h3 className="text-lg font-bold uppercase tracking-tight">Recent Activity</h3>
+            <h3 className="text-lg font-bold uppercase tracking-tight">Operations Status</h3>
             <div className="space-y-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="flex gap-4">
-                  <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center shrink-0">
-                    <CheckCircle2 size={14} className="text-green-500" />
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="text-xs font-medium"><span className="font-bold">Elias Wood</span> checked in</p>
-                    <span className="text-[9px] text-on-surface-variant/50 uppercase tracking-widest">Just now • QR Scanner</span>
-                  </div>
-                </div>
-              ))}
+              <StatusItem label="Live event record" active />
+              <StatusItem label="Officer create/edit/archive" active={canEditEvent || canArchiveEvent} />
+              <StatusItem label="Attendance writes" active={false} />
             </div>
-            <button className="w-full py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center gap-2">
-              View All Activity <ChevronRight size={14} />
+            <button onClick={() => navigate('/events')} className="w-full py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center gap-2">
+              Back to Event List <ChevronRight size={14} />
             </button>
           </div>
         </div>
+      </div>
+
+      <AnimatePresence>
+        {isEditOpen && (
+          <EventFormModal
+            title="Edit Event"
+            saving={saving}
+            initialValues={eventToFormValues(event)}
+            onClose={() => setIsEditOpen(false)}
+            onSubmit={handleUpdate}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const EventDetailPanel = ({ event }: { event: LiveEvent }) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+    <div className="space-y-8">
+      <DetailItem icon={<CalendarIcon size={18} />} label="Date" value={formatEventDate(event.event_date)} />
+      <DetailItem icon={<Clock size={18} />} label="Time" value={formatEventTimeRange(event.starts_at, event.ends_at)} />
+      <DetailItem icon={<MapPin size={18} />} label="Location" value={event.location} />
+    </div>
+    <div className="space-y-4">
+      <h4 className="text-[10px] font-bold uppercase tracking-[0.2rem] text-on-surface-variant/40">Attendance Policies</h4>
+      <div className="space-y-3">
+        <PolicyBadge label="Mandatory" active={event.category === 'mandatory'} />
+        <PolicyBadge label="QR Check-In" active={event.qr_enabled} />
+        <PolicyBadge label="Excusals Allowed" active={event.allow_excusals} />
+      </div>
+    </div>
+  </div>
+);
+
+const AttendanceSummary = ({ event }: { event: Awaited<ReturnType<typeof fetchEventById>> }) => {
+  if (!event) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="p-6 bg-surface-container-lowest rounded-xl border border-white/5">
+        <h4 className="text-sm font-black uppercase tracking-widest mb-4">Read-only attendance count</h4>
+        <p className="text-sm text-on-surface-variant leading-relaxed">
+          This panel reads existing `event_attendees` counts only. Check-in writes, CSV import, and excusal review stay in Sprint 4.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniCount label="Expected" value={event.attendance.expected} />
+        <MiniCount label="Present" value={event.attendance.present} />
+        <MiniCount label="Excused" value={event.attendance.excused} />
+        <MiniCount label="Absent" value={event.attendance.absent} />
       </div>
     </div>
   );
 };
 
-const StatCard = ({ label, value, icon, color }: any) => (
+const OfficerNotes = ({ event, canEdit, onEdit }: { event: LiveEvent; canEdit: boolean; onEdit: () => void }) => (
+  <div className="space-y-6">
+    <div className="p-6 bg-surface-container-lowest rounded-xl border border-primary/20 relative">
+      <div className="absolute -top-3 left-6 px-3 py-1 bg-primary text-white text-[9px] font-black uppercase tracking-widest rounded-full">Executive Note</div>
+      <p className="text-sm leading-relaxed text-on-surface/80 italic">
+        "{event.officer_notes || 'No officer notes recorded.'}"
+      </p>
+      <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+        <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/40">Stored in Supabase</span>
+        {canEdit && <button onClick={onEdit} className="text-[9px] font-bold uppercase tracking-widest text-primary hover:underline">Edit Note</button>}
+      </div>
+    </div>
+  </div>
+);
+
+const StatCard = ({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color?: string }) => (
   <div className="bg-surface-container-low p-5 rounded-2xl border border-white/5 flex flex-col gap-2">
     <div className="flex items-center justify-between text-on-surface-variant/40">
       <span className="text-[9px] font-bold uppercase tracking-widest">{label}</span>
@@ -215,7 +327,7 @@ const StatCard = ({ label, value, icon, color }: any) => (
   </div>
 );
 
-const DetailItem = ({ icon, label, value }: any) => (
+const DetailItem = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
   <div className="flex items-start gap-4">
     <div className="w-10 h-10 rounded-xl bg-surface-container-lowest flex items-center justify-center text-primary border border-white/5">
       {icon}
@@ -227,7 +339,7 @@ const DetailItem = ({ icon, label, value }: any) => (
   </div>
 );
 
-const PolicyBadge = ({ label, active }: any) => (
+const PolicyBadge = ({ label, active }: { label: string; active: boolean }) => (
   <div className={cn(
     "flex items-center justify-between p-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest",
     active ? "bg-primary/5 border-primary/20 text-primary" : "bg-surface-container-lowest border-white/5 text-on-surface-variant/40"
@@ -237,11 +349,30 @@ const PolicyBadge = ({ label, active }: any) => (
   </div>
 );
 
-const CalendarIcon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-    <line x1="16" y1="2" x2="16" y2="6" />
-    <line x1="8" y1="2" x2="8" y2="6" />
-    <line x1="3" y1="10" x2="21" y2="10" />
-  </svg>
+const Badge = ({ label, tone = 'default' }: { label: string; tone?: 'default' | 'danger' }) => (
+  <span className={cn(
+    "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+    tone === 'danger' ? "bg-red-600/20 text-red-500" : "bg-surface-container-high text-on-surface-variant"
+  )}>
+    {label}
+  </span>
+);
+
+const MiniCount = ({ label, value }: { label: string; value: number }) => (
+  <div className="p-4 bg-surface-container-lowest rounded-xl border border-white/5">
+    <p className="text-[9px] text-on-surface-variant/50 uppercase tracking-widest font-bold">{label}</p>
+    <p className="text-2xl font-black mt-1">{value}</p>
+  </div>
+);
+
+const StatusItem = ({ label, active }: { label: string; active: boolean }) => (
+  <div className="flex gap-4">
+    <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center shrink-0">
+      {active ? <CheckCircle2 size={14} className="text-green-500" /> : <MoreVertical size={14} className="text-on-surface-variant" />}
+    </div>
+    <div className="flex flex-col justify-center">
+      <p className="text-xs font-medium">{label}</p>
+      <span className="text-[9px] text-on-surface-variant/50 uppercase tracking-widest">{active ? 'Active' : 'Future sprint'}</span>
+    </div>
+  </div>
 );
