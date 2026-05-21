@@ -19,6 +19,7 @@ Relevant files:
 - `.planning/PRE-16-HARDENING-V2-ALIGNMENT-PLAN.md` — prior hardening plan for the older full-stack workspace.
 - `docs/AUTHORIZATION_MODEL.md` — current authorization decision.
 - `docs/SPRINT_1_AUTH_FOUNDATION_CLOSEOUT.md` — completed Sprint 1 status.
+- `docs/SPRINT_3_OPERATIONS_EVENTS_CLOSEOUT.md` — completed Sprint 3 status.
 
 ## Current Product State
 
@@ -64,7 +65,9 @@ Done means:
 
 ### Sprint 3 — Operations And Events
 
-Status: active.
+Status: complete.
+
+Closed in `docs/SPRINT_3_OPERATIONS_EVENTS_CLOSEOUT.md`.
 
 Goal: make events real before attendance depends on them.
 

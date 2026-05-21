@@ -65,7 +65,6 @@ export const OFFICER_POSITION_SLUGS = [
 ] as const;
 
 const OFFICER_WORKFLOW_PERMISSIONS: Permission[] = [
-  'events.create',
   'forms.intake',
   'forms.responses.view',
   'reports.submit',
@@ -83,6 +82,7 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   president: [
     'roster.view',
     'positions.manage',
+    'events.create',
     'events.edit',
     'events.archive',
     'attendance.import',
@@ -93,6 +93,7 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   secretary: [
     'roster.view',
     'positions.manage',
+    'events.create',
     'events.edit',
     'events.archive',
     'attendance.import',

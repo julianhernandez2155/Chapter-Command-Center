@@ -37,7 +37,7 @@ import { EventFormModal } from './Events';
 export const EventDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { member, can } = useAuth();
   const [activeTab, setActiveTab] = useState('Event Details');
   const [event, setEvent] = useState<Awaited<ReturnType<typeof fetchEventById>>>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +45,9 @@ export const EventDetails = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canEditEvent = can('events.edit');
-  const canArchiveEvent = can('events.archive');
+  const canManageOwnedEvent = Boolean(event && member?.id === event.created_by && can('events.create'));
+  const canEditEvent = can('events.edit') || canManageOwnedEvent;
+  const canArchiveEvent = can('events.archive') || canManageOwnedEvent;
 
   const loadEvent = async () => {
     if (!id) return;
