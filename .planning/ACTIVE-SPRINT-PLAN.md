@@ -82,7 +82,7 @@ Attendance/check-in should not be built until event records are live and stable.
 
 ### Sprint 4 — Attendance And Excusals
 
-Status: planned.
+Status: active.
 
 Goal: make attendance capture and absence review real.
 
