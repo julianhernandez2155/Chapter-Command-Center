@@ -595,24 +595,20 @@ export const SecretaryMemberRegistry = () => {
           selectedMember && 'xl:grid-cols-[minmax(0,1fr)_420px]'
         )}>
           <div className="bg-surface-container-low rounded-2xl overflow-hidden">
-            <TableToolbar
-              selectedCount={selectedRows.length}
-              visibleCount={visibleMembers.length}
-              allVisibleSelected={visibleMembers.length > 0 && selectedIds.size === visibleMembers.length}
-              saving={savingId === 'bulk-chased'}
-              onToggleAll={() => {
-                setSelectedIds(current => current.size === visibleMembers.length
-                  ? new Set()
-                  : new Set(visibleMembers.map(member => member.id)));
-              }}
-              onClear={() => setSelectedIds(new Set())}
-              onMarkChased={() => void markSelectedChased()}
-            />
+            {selectedRows.length > 0 && (
+              <TableToolbar
+                selectedCount={selectedRows.length}
+                saving={savingId === 'bulk-chased'}
+                onClear={() => setSelectedIds(new Set())}
+                onMarkChased={() => void markSelectedChased()}
+              />
+            )}
             <RegistryTable
               columns={activeColumns}
               members={visibleMembers}
               selectedMember={selectedMember}
               selectedIds={selectedIds}
+              allVisibleSelected={visibleMembers.length > 0 && selectedIds.size === visibleMembers.length}
               sort={sort}
               density={density}
               savingId={savingId}
@@ -626,6 +622,11 @@ export const SecretaryMemberRegistry = () => {
                   else next.add(memberId);
                   return next;
                 });
+              }}
+              onToggleAll={() => {
+                setSelectedIds(current => current.size === visibleMembers.length
+                  ? new Set()
+                  : new Set(visibleMembers.map(member => member.id)));
               }}
               onSort={setSortColumn}
               onMarkVerified={member => void markVerified(member)}
@@ -933,47 +934,35 @@ const ColumnPanel = ({
 
 const TableToolbar = ({
   selectedCount,
-  visibleCount,
-  allVisibleSelected,
   saving,
-  onToggleAll,
   onClear,
   onMarkChased
 }: {
   selectedCount: number;
-  visibleCount: number;
-  allVisibleSelected: boolean;
   saving: boolean;
-  onToggleAll: () => void;
   onClear: () => void;
   onMarkChased: () => void;
 }) => (
-  <div className="bg-surface-container-lowest px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-    <button
-      onClick={onToggleAll}
-      className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface flex items-center gap-2"
-    >
-      {allVisibleSelected ? <CheckSquare size={15} /> : <Square size={15} />}
-      {selectedCount > 0 ? `${selectedCount} selected` : `${visibleCount} visible`}
-    </button>
-    {selectedCount > 0 && (
-      <div className="flex gap-2">
-        <button
-          onClick={onMarkChased}
-          disabled={saving}
-          className="bg-primary/10 text-primary rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center gap-2 disabled:opacity-50"
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-          Mark Chased
-        </button>
-        <button
-          onClick={onClear}
-          className="bg-surface-container-high text-on-surface-variant rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem]"
-        >
-          Clear
-        </button>
-      </div>
-    )}
+  <div className="bg-surface-container-lowest px-5 py-2 flex flex-wrap items-center justify-between gap-3">
+    <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">
+      {selectedCount} selected
+    </p>
+    <div className="flex gap-2">
+      <button
+        onClick={onMarkChased}
+        disabled={saving}
+        className="bg-primary/10 text-primary rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center gap-2 disabled:opacity-50"
+      >
+        {saving ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+        Mark Chased
+      </button>
+      <button
+        onClick={onClear}
+        className="bg-surface-container-high text-on-surface-variant rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem]"
+      >
+        Clear
+      </button>
+    </div>
   </div>
 );
 
@@ -982,11 +971,13 @@ const RegistryTable = ({
   members,
   selectedMember,
   selectedIds,
+  allVisibleSelected,
   sort,
   density,
   savingId,
   onSelect,
   onToggleRow,
+  onToggleAll,
   onSort,
   onMarkVerified,
   onMarkChased
@@ -995,11 +986,13 @@ const RegistryTable = ({
   members: SecretaryMemberProfile[];
   selectedMember: SecretaryMemberProfile | null;
   selectedIds: Set<string>;
+  allVisibleSelected: boolean;
   sort: RegistrySort;
   density: Density;
   savingId: string | null;
   onSelect: (member: SecretaryMemberProfile) => void;
   onToggleRow: (memberId: string) => void;
+  onToggleAll: () => void;
   onSort: (column: RegistryColumn) => void;
   onMarkVerified: (member: SecretaryMemberProfile) => void;
   onMarkChased: (member: SecretaryMemberProfile) => void;
@@ -1007,18 +1000,29 @@ const RegistryTable = ({
   const rowPadding = density === 'compact' ? 'px-4 py-3' : density === 'comfortable' ? 'px-5 py-5' : 'px-5 py-4';
 
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[calc(100vh-18rem)] overflow-auto">
       <table className="w-full min-w-[1120px] text-left border-separate border-spacing-0">
         <thead className="bg-surface-container-lowest text-on-surface-variant">
           <tr>
-            <th className="sticky left-0 z-40 bg-surface-container-lowest px-4 py-4 w-12" />
+            <th className="sticky left-0 top-0 z-50 bg-surface-container-lowest px-4 py-4 w-12">
+              <button
+                onClick={event => {
+                  event.stopPropagation();
+                  onToggleAll();
+                }}
+                className="text-on-surface-variant hover:text-on-surface"
+                title="Select visible rows"
+              >
+                {allVisibleSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+              </button>
+            </th>
             {columns.map((column, index) => (
               <th
                 key={column.key}
                 style={{ minWidth: column.minWidth }}
                 className={cn(
-                  'py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
-                  column.key === 'name' && 'sticky left-12 z-40 bg-surface-container-lowest shadow-[18px_0_28px_rgba(0,0,0,0.36)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:bg-surface-container-lowest before:content-[\"\"] before:-z-10',
+                  'sticky top-0 z-40 bg-surface-container-lowest py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
+                  column.key === 'name' && 'left-12 z-50 shadow-[18px_0_28px_rgba(0,0,0,0.36)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:bg-surface-container-lowest before:content-[\"\"] before:-z-10',
                   index === 0 ? 'px-4' : 'px-5'
                 )}
               >
