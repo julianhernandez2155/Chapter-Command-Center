@@ -7,4 +7,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables in client configuration.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const appAuthLock = async <T,>(_name: string, _acquireTimeout: number, fn: () => Promise<T>) => fn();
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storageKey: 'chapter-command-center-auth',
+    lock: appAuthLock,
+    lockAcquireTimeout: 2000,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});

@@ -24,6 +24,8 @@ export const DevPersonaSwitcher: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activePersona = PERSONAS.find(persona => persona.email === user?.email);
+  const activeRoleLabel = activePersona?.role ?? roles[0] ?? 'Member';
 
   // Fail-closed condition
   const isEnabled = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEV_PERSONAS === 'true';
@@ -52,7 +54,6 @@ export const DevPersonaSwitcher: React.FC = () => {
 
   const getActivePersonaColor = () => {
     if (!user) return 'border-border/30 text-text-muted bg-surface-nav/40';
-    const activePersona = PERSONAS.find(p => p.email === user.email);
     if (activePersona) return `border border-solid ${activePersona.color} bg-gradient-to-br`;
     return 'border-primary/20 text-primary bg-primary/10';
   };
@@ -68,7 +69,7 @@ export const DevPersonaSwitcher: React.FC = () => {
         >
           <Sparkles className="w-4 h-4 animate-pulse" />
           <span className="text-xs font-mono font-bold uppercase tracking-wider">
-            {switching ? 'Switching...' : member ? `${member.preferred_name || member.legal_first_name} (${roles[0] || 'Member'})` : 'Select Persona'}
+            {switching ? 'Switching...' : member ? `${member.preferred_name || member.legal_first_name} (${activeRoleLabel})` : 'Select Persona'}
           </span>
           {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
         </button>

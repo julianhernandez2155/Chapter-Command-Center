@@ -53,7 +53,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const AUTH_LOAD_TIMEOUT_MS = 8000;
+const AUTH_LOAD_TIMEOUT_MS = 20000;
 
 const withTimeout = async <T,>(promise: Promise<T>, message: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -79,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const userRef = useRef<User | null>(null);
   const memberRef = useRef<MemberProfile | null>(null);
+  const profileLoadIdRef = useRef(0);
 
   useEffect(() => {
     userRef.current = user;
@@ -94,7 +95,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPositions([]);
   };
 
-  const fetchProfileAndRoles = async (currentUser: User) => {
+  const beginUserSession = (currentUser: User) => {
+    const loadId = profileLoadIdRef.current + 1;
+    profileLoadIdRef.current = loadId;
+    userRef.current = currentUser;
+    setUser(currentUser);
+    return loadId;
+  };
+
+  const resetAuthState = () => {
+    profileLoadIdRef.current += 1;
+    userRef.current = null;
+    memberRef.current = null;
+    setUser(null);
+    resetProfileState();
+  };
+
+  const fetchProfileAndRoles = async (currentUser: User, loadId = profileLoadIdRef.current) => {
+    const isCurrentLoad = () => profileLoadIdRef.current === loadId;
+
     try {
       // 1. Fetch member profile
       const { data: memberData, error: memberError } = await supabase
@@ -103,18 +122,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('auth_user_id', currentUser.id)
         .maybeSingle();
 
+      if (!isCurrentLoad()) return;
+
       if (memberError) {
         console.error('Error fetching member profile:', memberError);
         resetProfileState();
         return;
       }
 
+      memberRef.current = memberData;
       setMember(memberData);
 
       if (memberData) {
         // 2. Fetch roles using user_positions RPC
         const { data: rolesData, error: rolesError } = await supabase
           .rpc('user_positions');
+
+        if (!isCurrentLoad()) return;
 
         if (rolesError) {
           console.error('Error calling user_positions RPC:', rolesError);
@@ -125,8 +149,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRoles(roleSlugs);
 
           try {
-            setPositions(await fetchCurrentMemberPositions(roleSlugs));
+            const activePositions = await fetchCurrentMemberPositions(roleSlugs);
+            if (!isCurrentLoad()) return;
+            setPositions(activePositions);
           } catch (positionsError) {
+            if (!isCurrentLoad()) return;
             console.error('Error fetching active position records:', positionsError);
             setPositions([]);
           }
@@ -135,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetProfileState();
       }
     } catch (e) {
+      if (!isCurrentLoad()) return;
       console.error('Unexpected error loading auth profile:', e);
       resetProfileState();
     }
@@ -153,20 +181,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!isMounted) return;
 
         if (session?.user) {
-          setUser(session.user);
+          const loadId = beginUserSession(session.user);
           await withTimeout(
-            fetchProfileAndRoles(session.user),
+            fetchProfileAndRoles(session.user, loadId),
             'Timed out while loading Supabase member profile.'
           );
         } else {
-          setUser(null);
-          resetProfileState();
+          resetAuthState();
         }
       } catch (err) {
         console.error('Error loading initial auth session:', err);
         if (isMounted) {
-          setUser(null);
-          resetProfileState();
+          resetAuthState();
         }
       } finally {
         if (isMounted) {
@@ -185,6 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (event === 'TOKEN_REFRESHED' && session?.user) {
+          userRef.current = session.user;
           setUser(session.user);
           return;
         }
@@ -200,19 +227,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (session?.user) {
-          setUser(session.user);
+          const loadId = beginUserSession(session.user);
           try {
             await withTimeout(
-              fetchProfileAndRoles(session.user),
+              fetchProfileAndRoles(session.user, loadId),
               'Timed out while loading Supabase member profile.'
             );
           } catch (err) {
             console.error('Error loading auth profile after state change:', err);
-            resetProfileState();
+            resetAuthState();
           }
         } else {
-          setUser(null);
-          resetProfileState();
+          resetAuthState();
         }
 
         if (!alreadyLoadedForUser) {
@@ -239,7 +265,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfileAndRoles(user);
+      const loadId = beginUserSession(user);
+      await fetchProfileAndRoles(user, loadId);
     }
   };
 
