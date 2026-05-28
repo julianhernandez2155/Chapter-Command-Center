@@ -7,8 +7,11 @@ import {
   CheckSquare,
   Columns3,
   Copy,
+  ClipboardCheck,
   Download,
+  FileSpreadsheet,
   Filter,
+  GraduationCap,
   Loader2,
   Mail,
   Phone,
@@ -26,6 +29,7 @@ import {
 import { cn } from '@/src/lib/utils';
 import {
   SecretaryMemberProfile,
+  createSecretaryChaseBatch,
   fetchSecretaryMemberProfiles,
   markSecretaryProfileChased,
   markSecretaryProfileVerified
@@ -34,6 +38,8 @@ import {
 type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
 type Density = 'compact' | 'standard' | 'comfortable';
 type SortDirection = 'asc' | 'desc';
+type WorkflowKey = 'verification' | 'chase' | 'exports' | 'graduation';
+type ExportPresetId = 'contact_sheet' | 'parent_consent' | 'missing_info' | 'study_abroad' | 'greek_life_fasa';
 type VerificationFilter = 'all' | 'verified' | 'unverified' | 'stale_30';
 type MissingFilter = 'all' | 'missing' | 'complete';
 type RosterFilter = 'all' | 'active' | 'missing' | 'status_watchlist';
@@ -42,11 +48,15 @@ type ColumnKey =
   | 'name'
   | 'status'
   | 'suid'
+  | 'active_positions'
   | 'phone'
   | 'google_email'
   | 'personal_email'
+  | 'tshirt_size'
+  | 'hoodie_size'
   | 'expected_graduation_term'
   | 'graduation_year'
+  | 'study_abroad'
   | 'pledge_class'
   | 'initiation_date'
   | 'school'
@@ -106,6 +116,12 @@ interface RegistrySavedView {
   sensitive?: boolean;
 }
 
+interface ChaseComposer {
+  recipientLine: string;
+  subject: string;
+  body: string;
+}
+
 const CUSTOM_VIEWS_STORAGE_KEY = 'chapter-command-center-secretary-registry-views-v1';
 
 const DEFAULT_FILTERS: RegistryFilters = {
@@ -123,7 +139,7 @@ const SYSTEM_VIEWS: RegistrySavedView[] = [
     id: 'active',
     label: 'Active Roster',
     description: 'Working roster with chapter and academic context.',
-    columns: ['name', 'status', 'expected_graduation_term', 'pledge_class', 'school', 'major', 'phone', 'missing_count'],
+    columns: ['name', 'status', 'active_positions', 'expected_graduation_term', 'pledge_class', 'school', 'major', 'phone', 'missing_count'],
     filters: { ...DEFAULT_FILTERS, roster: 'active' },
     sort: { column: 'name', direction: 'asc' },
     density: 'standard',
@@ -133,7 +149,7 @@ const SYSTEM_VIEWS: RegistrySavedView[] = [
     id: 'contact',
     label: 'Contact Sheet',
     description: 'Fast lookup and contact exports.',
-    columns: ['name', 'phone', 'google_email', 'personal_email', 'instagram', 'snapchat', 'linkedin', 'status'],
+    columns: ['name', 'phone', 'google_email', 'personal_email', 'instagram', 'snapchat', 'linkedin', 'status', 'active_positions'],
     filters: { ...DEFAULT_FILTERS },
     sort: { column: 'name', direction: 'asc' },
     density: 'compact',
@@ -169,10 +185,67 @@ const SYSTEM_VIEWS: RegistrySavedView[] = [
     sort: { column: 'status', direction: 'asc' },
     density: 'standard',
     system: true
+  },
+  {
+    id: 'study_abroad',
+    label: 'Study Abroad',
+    description: 'Members with current study abroad context.',
+    columns: ['name', 'study_abroad', 'phone', 'google_email', 'personal_email', 'school', 'major', 'expected_graduation_term'],
+    filters: { ...DEFAULT_FILTERS },
+    sort: { column: 'name', direction: 'asc' },
+    density: 'standard',
+    system: true
   }
 ];
 
 const INITIAL_VIEW = SYSTEM_VIEWS[0];
+
+const WORKFLOWS: Array<{ id: WorkflowKey; label: string; icon: React.ReactNode }> = [
+  { id: 'verification', label: 'Verification', icon: <CheckCircle2 size={18} /> },
+  { id: 'chase', label: 'Missing Info Chase', icon: <ClipboardCheck size={18} /> },
+  { id: 'exports', label: 'Export Presets', icon: <FileSpreadsheet size={18} /> },
+  { id: 'graduation', label: 'Graduation Review', icon: <GraduationCap size={18} /> }
+];
+
+const EXPORT_PRESETS: Array<{
+  id: ExportPresetId;
+  label: string;
+  description: string;
+  columns: ColumnKey[];
+  sensitive?: boolean;
+}> = [
+  {
+    id: 'contact_sheet',
+    label: 'Chapter Contact Sheet',
+    description: 'Names, phones, emails, socials, roles.',
+    columns: ['name', 'status', 'active_positions', 'phone', 'google_email', 'personal_email', 'instagram', 'snapchat', 'linkedin']
+  },
+  {
+    id: 'parent_consent',
+    label: 'Parent Outreach Consent List',
+    description: 'Consent plus guardian contact readiness.',
+    columns: ['name', 'phone', 'personal_email', 'parent_outreach_consent', 'guardian_1', 'guardian_2', 'emergency_contact'],
+    sensitive: true
+  },
+  {
+    id: 'missing_info',
+    label: 'Missing-Info List',
+    description: 'Follow-up roster for incomplete profiles.',
+    columns: ['name', 'missing_count', 'missing_fields', 'phone', 'personal_email', 'last_chased_at', 'last_verified_at']
+  },
+  {
+    id: 'study_abroad',
+    label: 'Study Abroad List',
+    description: 'Current abroad status and academic context.',
+    columns: ['name', 'study_abroad', 'phone', 'google_email', 'personal_email', 'school', 'major', 'expected_graduation_term']
+  },
+  {
+    id: 'greek_life_fasa',
+    label: 'Greek Life FASA Workbook',
+    description: 'Three-tab roster format matching the SU workbook.',
+    columns: ['name']
+  }
+];
 
 export const SecretaryMemberRegistry = () => {
   const [members, setMembers] = useState<SecretaryMemberProfile[]>([]);
@@ -190,6 +263,9 @@ export const SecretaryMemberRegistry = () => {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [viewNameDraft, setViewNameDraft] = useState('');
+  const [activeWorkflow, setActiveWorkflow] = useState<WorkflowKey>('verification');
+  const [copiedComposerField, setCopiedComposerField] = useState<string | null>(null);
+  const [lastChaseBatchId, setLastChaseBatchId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -287,6 +363,31 @@ export const SecretaryMemberRegistry = () => {
   const selectedRows = useMemo(
     () => visibleMembers.filter(member => selectedIds.has(member.id)),
     [selectedIds, visibleMembers]
+  );
+
+  const verificationDueMembers = useMemo(
+    () => members.filter(member => isStaleVerification(member.last_verified_at)),
+    [members]
+  );
+  const missingInfoMembers = useMemo(
+    () => members.filter(member => member.missing_required_field_count > 0),
+    [members]
+  );
+  const currentStudyAbroadMembers = useMemo(
+    () => members.filter(member => member.current_status_type === 'study_abroad' || Boolean(member.current_status_label)),
+    [members]
+  );
+  const graduationReviewMembers = useMemo(
+    () => members.filter(isGraduationReviewCandidate),
+    [members]
+  );
+  const chaseRows = useMemo(
+    () => selectedRows.length > 0 ? selectedRows : visibleMembers.filter(member => member.missing_required_field_count > 0),
+    [selectedRows, visibleMembers]
+  );
+  const chaseComposer = useMemo(
+    () => buildMissingInfoChaseComposer(chaseRows),
+    [chaseRows]
   );
 
   const missingCount = members.filter(member => member.missing_required_field_count > 0).length;
@@ -403,6 +504,39 @@ export const SecretaryMemberRegistry = () => {
     }
   };
 
+  const copyComposerField = async (label: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopiedComposerField(label);
+    window.setTimeout(() => setCopiedComposerField(null), 1800);
+  };
+
+  const trackChaseBatch = async () => {
+    if (chaseRows.length === 0) return;
+    setSavingId('chase-batch');
+    setError(null);
+
+    try {
+      const batchId = await createSecretaryChaseBatch({
+        batch_label: `Missing Info Chase - ${formatFileDate(new Date())}`,
+        subject: chaseComposer.subject,
+        body: chaseComposer.body,
+        members: chaseRows.map(member => ({
+          member_id: member.id,
+          recipient_line: getRecipientLine(member),
+          missing_fields: member.missing_required_fields
+        }))
+      });
+      setLastChaseBatchId(batchId);
+      await loadMembers();
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error('Unable to track chase batch:', err);
+      setError(err instanceof Error ? err.message : 'Unable to track chase batch.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const exportVisibleRows = async () => {
     const rows = selectedRows.length > 0 ? selectedRows : visibleMembers;
     const exportColumns = activeColumns.filter(column => column.exportable !== false);
@@ -422,6 +556,35 @@ export const SecretaryMemberRegistry = () => {
         sensitive: sensitiveView
       });
       downloadWorkbook(`${slugify(activeView.label)}-${formatFileDate(new Date())}.xls`, workbook);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportPreset = async (presetId: ExportPresetId) => {
+    const preset = EXPORT_PRESETS.find(item => item.id === presetId);
+    if (!preset) return;
+
+    const rows = selectedRows.length > 0 ? selectedRows : getPresetRows(presetId, visibleMembers, members);
+    if (rows.length === 0) return;
+
+    if (preset.sensitive) {
+      const confirmed = window.confirm('This export includes parent/guardian or emergency contact data. Continue?');
+      if (!confirmed) return;
+    }
+
+    setExporting(true);
+    try {
+      const workbook = presetId === 'greek_life_fasa'
+        ? buildGreekLifeFasaWorkbook(rows)
+        : buildExcelWorkbook({
+          rows,
+          columns: preset.columns.map(key => COLUMN_BY_KEY[key]).filter(Boolean),
+          viewLabel: preset.label,
+          selectedOnly: selectedRows.length > 0,
+          sensitive: Boolean(preset.sensitive)
+        });
+      downloadWorkbook(`${slugify(preset.label)}-${formatFileDate(new Date())}.xls`, workbook);
     } finally {
       setExporting(false);
     }
@@ -573,6 +736,28 @@ export const SecretaryMemberRegistry = () => {
             </div>
           )}
         </div>
+
+        <GuidedWorkflows
+          activeWorkflow={activeWorkflow}
+          members={members}
+          visibleMembers={visibleMembers}
+          selectedRows={selectedRows}
+          verificationDueMembers={verificationDueMembers}
+          missingInfoMembers={missingInfoMembers}
+          currentStudyAbroadMembers={currentStudyAbroadMembers}
+          graduationReviewMembers={graduationReviewMembers}
+          chaseRows={chaseRows}
+          composer={chaseComposer}
+          copiedComposerField={copiedComposerField}
+          lastChaseBatchId={lastChaseBatchId}
+          saving={savingId === 'chase-batch'}
+          exporting={exporting}
+          onWorkflowChange={setActiveWorkflow}
+          onCopyComposerField={(label, value) => void copyComposerField(label, value)}
+          onTrackChaseBatch={() => void trackChaseBatch()}
+          onExportPreset={presetId => void exportPreset(presetId)}
+          onSelectView={selectView}
+        />
       </section>
 
       {loading && (
@@ -966,6 +1151,248 @@ const TableToolbar = ({
   </div>
 );
 
+const GuidedWorkflows = ({
+  activeWorkflow,
+  members,
+  visibleMembers,
+  selectedRows,
+  verificationDueMembers,
+  missingInfoMembers,
+  currentStudyAbroadMembers,
+  graduationReviewMembers,
+  chaseRows,
+  composer,
+  copiedComposerField,
+  lastChaseBatchId,
+  saving,
+  exporting,
+  onWorkflowChange,
+  onCopyComposerField,
+  onTrackChaseBatch,
+  onExportPreset,
+  onSelectView
+}: {
+  activeWorkflow: WorkflowKey;
+  members: SecretaryMemberProfile[];
+  visibleMembers: SecretaryMemberProfile[];
+  selectedRows: SecretaryMemberProfile[];
+  verificationDueMembers: SecretaryMemberProfile[];
+  missingInfoMembers: SecretaryMemberProfile[];
+  currentStudyAbroadMembers: SecretaryMemberProfile[];
+  graduationReviewMembers: SecretaryMemberProfile[];
+  chaseRows: SecretaryMemberProfile[];
+  composer: ChaseComposer;
+  copiedComposerField: string | null;
+  lastChaseBatchId: string | null;
+  saving: boolean;
+  exporting: boolean;
+  onWorkflowChange: (workflow: WorkflowKey) => void;
+  onCopyComposerField: (label: string, value: string) => void;
+  onTrackChaseBatch: () => void;
+  onExportPreset: (presetId: ExportPresetId) => void;
+  onSelectView: (view: RegistrySavedView) => void;
+}) => {
+  const workflowStats = {
+    verification: verificationDueMembers.length,
+    chase: missingInfoMembers.length,
+    exports: visibleMembers.length,
+    graduation: graduationReviewMembers.length
+  };
+
+  return (
+    <div className="bg-surface-container-low rounded-2xl p-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-5">
+        {WORKFLOWS.map(workflow => (
+          <button
+            key={workflow.id}
+            onClick={() => onWorkflowChange(workflow.id)}
+            className={cn(
+              'rounded-xl px-4 py-4 text-left transition-colors',
+              activeWorkflow === workflow.id ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span>{workflow.icon}</span>
+              <span className="text-2xl font-black tracking-tight">{workflowStats[workflow.id]}</span>
+            </div>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16rem]">{workflow.label}</p>
+          </button>
+        ))}
+      </div>
+
+      {activeWorkflow === 'verification' && (
+        <WorkflowBand
+          title="Verification"
+          metric={`${verificationDueMembers.length} due`}
+          actionLabel="Open Missing View"
+          onAction={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
+        >
+          <WorkflowList rows={verificationDueMembers.slice(0, 6)} getMeta={member => [
+            member.last_verified_at ? `Verified ${formatDateTime(member.last_verified_at)}` : 'Never verified',
+            `${member.missing_required_field_count} missing`
+          ].join(' · ')} />
+        </WorkflowBand>
+      )}
+
+      {activeWorkflow === 'chase' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+          <section className="bg-surface-container-lowest rounded-xl p-5">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Missing Info Chase</p>
+                <h3 className="text-xl font-black text-on-surface mt-1">{chaseRows.length} recipients</h3>
+              </div>
+              <button
+                onClick={onTrackChaseBatch}
+                disabled={saving || chaseRows.length === 0}
+                className="bg-primary text-white rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
+                Mark Chased
+              </button>
+            </div>
+            <ComposerField label="Recipients" value={composer.recipientLine} copied={copiedComposerField === 'Recipients'} onCopy={() => onCopyComposerField('Recipients', composer.recipientLine)} />
+            <ComposerField label="Subject" value={composer.subject} copied={copiedComposerField === 'Subject'} onCopy={() => onCopyComposerField('Subject', composer.subject)} />
+            <ComposerField label="Body" value={composer.body} copied={copiedComposerField === 'Body'} multiline copiedLabel="Copied body" onCopy={() => onCopyComposerField('Body', composer.body)} />
+            {lastChaseBatchId && (
+              <p className="mt-3 text-xs font-bold text-secondary">Batch tracked: {lastChaseBatchId.slice(0, 8)}</p>
+            )}
+          </section>
+          <section className="bg-surface-container-lowest rounded-xl p-5">
+            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Top Missing Records</p>
+            <WorkflowList rows={missingInfoMembers.slice(0, 8)} getMeta={member => member.missing_required_fields.slice(0, 4).map(formatLabel).join(', ')} />
+          </section>
+        </div>
+      )}
+
+      {activeWorkflow === 'exports' && (
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+          {EXPORT_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              onClick={() => onExportPreset(preset.id)}
+              disabled={exporting}
+              className="bg-surface-container-lowest rounded-xl p-5 text-left hover:bg-surface-container-high transition-colors disabled:opacity-50"
+            >
+              <FileSpreadsheet className="text-primary mb-4" size={20} />
+              <p className="text-xs font-black uppercase tracking-[0.14rem] text-on-surface">{preset.label}</p>
+              <p className="mt-2 text-[11px] font-bold text-on-surface-variant">{preset.description}</p>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {activeWorkflow === 'graduation' && (
+        <WorkflowBand
+          title="Graduation Review"
+          metric={`${graduationReviewMembers.length} candidates`}
+          actionLabel="Open Active View"
+          onAction={() => onSelectView(INITIAL_VIEW)}
+        >
+          <WorkflowList rows={graduationReviewMembers.slice(0, 8)} getMeta={member => [
+            member.expected_graduation_term ?? member.graduation_year ?? 'Grad term missing',
+            member.status,
+            member.current_status_label
+          ].filter(Boolean).join(' · ')} />
+        </WorkflowBand>
+      )}
+    </div>
+  );
+};
+
+const WorkflowBand = ({
+  title,
+  metric,
+  actionLabel,
+  onAction,
+  children
+}: {
+  title: string;
+  metric: string;
+  actionLabel: string;
+  onAction: () => void;
+  children: React.ReactNode;
+}) => (
+  <section className="bg-surface-container-lowest rounded-xl p-5">
+    <div className="flex items-center justify-between gap-4 mb-4">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">{title}</p>
+        <h3 className="text-xl font-black text-on-surface mt-1">{metric}</h3>
+      </div>
+      <button
+        onClick={onAction}
+        className="bg-surface-container-low rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-high"
+      >
+        {actionLabel}
+      </button>
+    </div>
+    {children}
+  </section>
+);
+
+const WorkflowList = ({
+  rows,
+  getMeta
+}: {
+  rows: SecretaryMemberProfile[];
+  getMeta: (member: SecretaryMemberProfile) => string;
+}) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+    {rows.length === 0 ? (
+      <p className="text-sm font-bold text-on-surface-variant">No matching records.</p>
+    ) : rows.map(member => (
+      <div key={member.id} className="bg-surface-container-low rounded-xl px-4 py-3">
+        <p className="text-sm font-black text-on-surface">{getDisplayName(member)}</p>
+        <p className="text-[11px] font-bold text-on-surface-variant mt-1 line-clamp-2">{getMeta(member)}</p>
+      </div>
+    ))}
+  </div>
+);
+
+const ComposerField = ({
+  label,
+  value,
+  copied,
+  multiline,
+  copiedLabel = 'Copied',
+  onCopy
+}: {
+  label: string;
+  value: string;
+  copied: boolean;
+  multiline?: boolean;
+  copiedLabel?: string;
+  onCopy: () => void;
+}) => (
+  <label className="block mb-3">
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">{label}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="text-[10px] font-black uppercase tracking-[0.14rem] text-primary flex items-center gap-1"
+      >
+        <Copy size={12} />
+        {copied ? copiedLabel : 'Copy'}
+      </button>
+    </div>
+    {multiline ? (
+      <textarea
+        value={value}
+        readOnly
+        rows={8}
+        className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface border-none focus:ring-1 focus:ring-primary/40 resize-none"
+      />
+    ) : (
+      <input
+        value={value}
+        readOnly
+        className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface border-none focus:ring-1 focus:ring-primary/40"
+      />
+    )}
+  </label>
+);
+
 const RegistryTable = ({
   columns,
   members,
@@ -1190,7 +1617,9 @@ const RegistryDrawer = ({
 
       <DrawerSection title="Core">
         <DetailRow label="Legal name" value={getLegalName(member)} />
+        <DetailRow label="Active roles" value={formatList(member.active_position_names)} />
         <DetailRow label="Expected grad" value={member.expected_graduation_term} />
+        <DetailRow label="Study abroad" value={formatStudyAbroad(member)} />
         <DetailRow label="Initiation" value={formatDate(member.initiation_date)} />
         <DetailRow label="School" value={member.school} />
         <DetailRow label="Major" value={member.major} />
@@ -1203,6 +1632,8 @@ const RegistryDrawer = ({
         <DetailRow label="Local address" value={member.local_address} />
         <DetailRow label="Campus housing" value={member.campus_housing} />
         <DetailRow label="Home" value={[member.home_city, member.home_state].filter(Boolean).join(', ')} />
+        <DetailRow label="T-Shirt" value={member.tshirt_size} />
+        <DetailRow label="Hoodie" value={member.hoodie_size} />
       </DrawerSection>
 
       <DrawerSection title="Parent / Emergency">
@@ -1276,11 +1707,15 @@ const REGISTRY_COLUMNS: RegistryColumn[] = [
   },
   column('status', 'Status', 'Identity', 150, member => <StatusPill status={member.status} />, member => member.status, member => member.status),
   column('suid', 'SUID', 'Identity', 120, member => member.suid, member => member.suid, member => member.suid),
+  column('active_positions', 'Roles', 'Identity', 220, member => formatList(member.active_position_names), member => formatList(member.active_position_names), member => formatList(member.active_position_names)),
   column('phone', 'Phone', 'Contact', 150, member => member.phone ?? 'Missing', member => member.phone ?? '', member => member.phone),
   column('google_email', 'School Email', 'Contact', 240, member => member.google_email, member => member.google_email, member => member.google_email),
   column('personal_email', 'Personal Email', 'Contact', 240, member => member.personal_email ?? 'Missing', member => member.personal_email ?? '', member => member.personal_email),
+  column('tshirt_size', 'T-Shirt', 'Contact', 120, member => member.tshirt_size ?? 'Missing', member => member.tshirt_size ?? '', member => member.tshirt_size),
+  column('hoodie_size', 'Hoodie', 'Contact', 120, member => member.hoodie_size ?? 'Missing', member => member.hoodie_size ?? '', member => member.hoodie_size),
   column('expected_graduation_term', 'Grad Term', 'Academic', 160, member => member.expected_graduation_term ?? String(member.graduation_year ?? 'Missing'), member => member.expected_graduation_term ?? '', member => member.expected_graduation_term ?? member.graduation_year),
   column('graduation_year', 'Grad Year', 'Academic', 120, member => member.graduation_year ?? 'Missing', member => member.graduation_year ?? '', member => member.graduation_year),
+  column('study_abroad', 'Study Abroad', 'Academic', 210, member => formatStudyAbroad(member), member => formatStudyAbroad(member), member => formatStudyAbroad(member)),
   column('pledge_class', 'Pledge Class', 'Academic', 160, member => member.pledge_class ?? 'Missing', member => member.pledge_class ?? '', member => member.pledge_class),
   column('initiation_date', 'Initiation', 'Academic', 150, member => formatDate(member.initiation_date) ?? 'Missing', member => formatDate(member.initiation_date) ?? '', member => member.initiation_date),
   column('school', 'School', 'Academic', 190, member => member.school ?? 'Missing', member => member.school ?? '', member => member.school),
@@ -1487,12 +1922,78 @@ function formatContact(
   return [name, relationship, phone, email].filter(Boolean).join(' · ');
 }
 
+function formatList(values: string[] | null | undefined) {
+  return values && values.length > 0 ? values.join(', ') : 'None';
+}
+
+function formatStudyAbroad(member: SecretaryMemberProfile) {
+  if (member.current_status_type !== 'study_abroad' && !member.current_status_label) return 'None';
+  return [
+    member.current_status_label ?? 'Study abroad',
+    [member.current_status_start_term, member.current_status_end_term].filter(Boolean).join(' to ')
+  ].filter(Boolean).join(' · ');
+}
+
+function getRecipientLine(member: SecretaryMemberProfile) {
+  const email = member.personal_email || member.google_email;
+  return `${getDisplayName(member)} <${email}>`;
+}
+
+function buildMissingInfoChaseComposer(rows: SecretaryMemberProfile[]): ChaseComposer {
+  const recipientLine = rows.map(getRecipientLine).join(', ');
+  const subject = 'Missing Chapter Roster Info';
+  const previewRows = rows.slice(0, 8).map(member => {
+    const fields = member.missing_required_fields.map(formatLabel).join(', ');
+    return `- ${getDisplayName(member)}: ${fields || 'No missing fields listed'}`;
+  });
+  const extraCount = Math.max(0, rows.length - previewRows.length);
+  const body = [
+    'Hey,',
+    '',
+    'I am cleaning up the chapter roster and need the missing items below confirmed.',
+    '',
+    ...previewRows,
+    extraCount > 0 ? `- ${extraCount} additional selected records included in this chase batch.` : '',
+    '',
+    'Reply with the missing info when you can.',
+    '',
+    'Thank you.'
+  ].filter(line => line !== '').join('\n');
+
+  return { recipientLine, subject, body };
+}
+
 function isStaleVerification(value?: string | null) {
   if (!value) return true;
   const verifiedAt = new Date(value);
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
   return verifiedAt < cutoff;
+}
+
+function isGraduationReviewCandidate(member: SecretaryMemberProfile) {
+  const currentYear = new Date().getFullYear();
+  const term = (member.expected_graduation_term ?? '').toLowerCase();
+  return member.status !== 'alumni' && (
+    (member.graduation_year !== null && member.graduation_year <= currentYear)
+    || term.includes(String(currentYear))
+  );
+}
+
+function getPresetRows(
+  presetId: ExportPresetId,
+  visibleMembers: SecretaryMemberProfile[],
+  allMembers: SecretaryMemberProfile[]
+) {
+  if (presetId === 'missing_info') {
+    return allMembers.filter(member => member.missing_required_field_count > 0);
+  }
+
+  if (presetId === 'study_abroad') {
+    return allMembers.filter(member => member.current_status_type === 'study_abroad' || Boolean(member.current_status_label));
+  }
+
+  return visibleMembers;
 }
 
 function buildExcelWorkbook({
@@ -1566,6 +2067,105 @@ function buildExcelWorkbook({
   </Worksheet>
   ${notesWorksheet}
 </Workbook>`;
+}
+
+function buildGreekLifeFasaWorkbook(rows: SecretaryMemberProfile[]) {
+  const memberRows = rows.map((member, index) => `
+    <Row>
+      ${cell(member.legal_first_name, 'Body')}
+      ${cell(member.legal_last_name, 'Body')}
+      ${cell(member.suid, 'Body')}
+      ${cell(member.google_email, 'Body')}
+      ${cell(toGreekLifeStatus(member), 'Body')}
+      ${cell(isChapterHouseMember(member) ? 'Yes' : 'No', 'Body')}
+      ${cell(member.local_address ?? member.campus_housing ?? '', 'Body')}
+      ${cell(index + 1, 'Body')}
+    </Row>
+  `).join('');
+
+  const officerRows = rows.flatMap(member => member.active_position_names.map(position => `
+    <Row>
+      ${cell(position, 'Body')}
+      ${cell(member.legal_first_name, 'Body')}
+      ${cell(member.legal_last_name, 'Body')}
+      ${cell(member.google_email, 'Body')}
+      ${cell(member.phone ?? '', 'Body')}
+      ${cell('', 'Body')}
+      ${cell('', 'Body')}
+    </Row>
+  `)).join('');
+
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="14" ss:Color="#FFFFFF"/><Interior ss:Color="#7A1F2B" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2A2A2A" ss:Pattern="Solid"/><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>
+    <Style ss:ID="Body"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#F7F7F4" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="1) Chapter Members">
+    <Table>
+      <Column ss:Width="110"/><Column ss:Width="110"/><Column ss:Width="150"/><Column ss:Width="210"/><Column ss:Width="180"/><Column ss:Width="150"/><Column ss:Width="280"/><Column ss:Width="80"/>
+      <Row>${cell('1) INPUT CHAPTER MEMBERS:', 'Title')}</Row>
+      <Row>
+        ${cell('First Name', 'Header')}
+        ${cell('Last Name', 'Header')}
+        ${cell('SU ID#', 'Header')}
+        ${cell('SYR Email', 'Header')}
+        ${cell('Chapter Member Status', 'Header')}
+        ${cell('Lives in Chapter House', 'Header')}
+        ${cell('Campus Address', 'Header')}
+        ${cell('Row', 'Header')}
+      </Row>
+      ${memberRows}
+    </Table>
+  </Worksheet>
+  <Worksheet ss:Name="2) Chapter Officers">
+    <Table>
+      <Column ss:Width="210"/><Column ss:Width="110"/><Column ss:Width="110"/><Column ss:Width="210"/><Column ss:Width="140"/><Column ss:Width="110"/><Column ss:Width="110"/>
+      <Row>${cell('2) INPUT CHAPTER OFFICERS:', 'Title')}</Row>
+      <Row>
+        ${cell('Role/Responsibilities', 'Header')}
+        ${cell('First Name', 'Header')}
+        ${cell('Last Name', 'Header')}
+        ${cell('SYR Email', 'Header')}
+        ${cell('Cell Phone', 'Header')}
+        ${cell('Mo./Yr. Term Begins', 'Header')}
+        ${cell('Mo./Yr. Term Ends', 'Header')}
+      </Row>
+      ${officerRows}
+    </Table>
+  </Worksheet>
+  <Worksheet ss:Name="3) Chapter Advisors">
+    <Table>
+      <Column ss:Width="210"/><Column ss:Width="110"/><Column ss:Width="110"/><Column ss:Width="210"/><Column ss:Width="140"/>
+      <Row>${cell('3) INPUT CHAPTER ADVISORS:', 'Title')}</Row>
+      <Row>${cell('A) COMPLETE SECTION "A" ONLY IF YOUR CHAPTER HAS A HOUSE', 'Body')}</Row>
+      <Row>
+        ${cell('Role/Responsibilities', 'Header')}
+        ${cell('First Name', 'Header')}
+        ${cell('Last Name', 'Header')}
+        ${cell('Email', 'Header')}
+        ${cell('Phone Number', 'Header')}
+      </Row>
+    </Table>
+  </Worksheet>
+</Workbook>`;
+}
+
+function toGreekLifeStatus(member: SecretaryMemberProfile) {
+  if (member.current_status_type === 'study_abroad') return 'Abroad';
+  if (member.status === 'new_member') return 'New Member';
+  if (member.status === 'alumni') return 'Alumni/Graduate';
+  if (member.status === 'inactive' || member.status === 'suspended') return 'Inactive';
+  return 'Active';
+}
+
+function isChapterHouseMember(member: SecretaryMemberProfile) {
+  return (member.campus_housing ?? '').toLowerCase().includes('chapter');
 }
 
 function cell(value: string | number, styleId: string) {

@@ -30,6 +30,13 @@ export interface SecretaryMemberProfile {
   linkedin: string | null;
   avatar_url: string | null;
   bio: string | null;
+  tshirt_size: string | null;
+  hoodie_size: string | null;
+  current_status_type: string | null;
+  current_status_label: string | null;
+  current_status_start_term: string | null;
+  current_status_end_term: string | null;
+  active_position_names: string[];
   parent_outreach_consent: boolean;
   last_verified_at: string | null;
   last_chased_at: string | null;
@@ -62,6 +69,8 @@ export type SecretaryMemberProfileUpdate = Partial<Pick<
   | 'instagram'
   | 'snapchat'
   | 'linkedin'
+  | 'tshirt_size'
+  | 'hoodie_size'
   | 'local_address'
   | 'campus_housing'
   | 'home_city'
@@ -77,6 +86,17 @@ export interface GuardianContactUpsert {
   relationship?: string | null;
   phone?: string | null;
   email?: string | null;
+}
+
+export interface SecretaryChaseBatchCreate {
+  batch_label: string;
+  subject: string;
+  body: string;
+  members: Array<{
+    member_id: string;
+    recipient_line: string;
+    missing_fields: string[];
+  }>;
 }
 
 const SECRETARY_PROFILE_SELECT = `
@@ -107,6 +127,13 @@ const SECRETARY_PROFILE_SELECT = `
   linkedin,
   avatar_url,
   bio,
+  tshirt_size,
+  hoodie_size,
+  current_status_type,
+  current_status_label,
+  current_status_start_term,
+  current_status_end_term,
+  active_position_names,
   parent_outreach_consent,
   last_verified_at,
   last_chased_at,
@@ -161,6 +188,53 @@ export const markSecretaryProfileVerified = async (memberId: string) =>
 
 export const markSecretaryProfileChased = async (memberId: string) =>
   updateSecretaryMemberProfile(memberId, { last_chased_at: new Date().toISOString() });
+
+export const createSecretaryChaseBatch = async ({
+  batch_label,
+  subject,
+  body,
+  members
+}: SecretaryChaseBatchCreate): Promise<string> => {
+  if (members.length === 0) {
+    throw new Error('A chase batch requires at least one member.');
+  }
+
+  const { data: batch, error: batchError } = await supabase
+    .from('secretary_chase_batches')
+    .insert({
+      batch_label,
+      subject,
+      body,
+      recipient_count: members.length
+    })
+    .select('id')
+    .single();
+
+  if (batchError) {
+    throw batchError;
+  }
+
+  const batchId = batch.id as string;
+  const { error: membersError } = await supabase
+    .from('secretary_chase_batch_members')
+    .insert(members.map(member => ({
+      batch_id: batchId,
+      member_id: member.member_id,
+      recipient_line: member.recipient_line,
+      missing_fields: member.missing_fields
+    })));
+
+  if (membersError) {
+    throw membersError;
+  }
+
+  const chasedAt = new Date().toISOString();
+  for (const member of members) {
+    await updateSecretaryMemberProfile(member.member_id, { last_chased_at: chasedAt });
+  }
+
+  return batchId;
+};
 
 export const upsertGuardianContact = async (values: GuardianContactUpsert) => {
   const { error } = await supabase
