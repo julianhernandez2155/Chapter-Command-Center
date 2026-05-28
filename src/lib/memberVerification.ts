@@ -1,4 +1,20 @@
 import { supabase } from './supabase';
+import {
+  normalizeAddressText,
+  normalizeApparelSize,
+  normalizeEmail,
+  normalizeGraduationYear,
+  normalizeGuardianRelationship,
+  normalizeHousingType,
+  normalizeInstagram,
+  normalizeLinkedIn,
+  normalizeName,
+  normalizeNullableText,
+  normalizePhone,
+  normalizeSnapchat,
+  normalizeState,
+  normalizeTerm
+} from './normalizers';
 
 export type VerificationCycleStatus = 'draft' | 'open' | 'closed' | 'cancelled';
 export type VerificationSubmissionStatus =
@@ -434,9 +450,10 @@ export const updateMyVerificationProfile = async (
   memberId: string,
   values: MemberVerificationProfileUpdate
 ) => {
+  const normalizedValues = normalizeVerificationProfileUpdate(values);
   const { error } = await supabase
     .from('members')
-    .update(values)
+    .update(normalizedValues)
     .eq('id', memberId);
 
   if (error) {
@@ -472,15 +489,17 @@ export const saveMyVerificationContacts = async (
       continue;
     }
 
+    const firstName = normalizeName(guardian.firstName, `guardian_${guardian.contactOrder}_first_name`);
+    const lastName = normalizeName(guardian.lastName, `guardian_${guardian.contactOrder}_last_name`);
     const payload = {
       member_id: memberId,
       contact_order: guardian.contactOrder,
-      first_name: cleanOptional(guardian.firstName),
-      last_name: cleanOptional(guardian.lastName),
-      contact_name: buildContactName(guardian.firstName, guardian.lastName, `Parent/Guardian ${guardian.contactOrder}`),
-      relationship: cleanOptional(guardian.relationship),
-      phone: cleanOptional(guardian.phone),
-      email: cleanOptional(guardian.email),
+      first_name: firstName,
+      last_name: lastName,
+      contact_name: buildContactName(firstName, lastName, `Parent/Guardian ${guardian.contactOrder}`),
+      relationship: normalizeGuardianRelationship(guardian.relationship, `guardian_${guardian.contactOrder}_relationship`),
+      phone: normalizePhone(guardian.phone, `guardian_${guardian.contactOrder}_phone`),
+      email: normalizeEmail(guardian.email, `guardian_${guardian.contactOrder}_email`),
       outreach_consent: guardian.outreachConsent
     };
 
@@ -533,16 +552,72 @@ export const saveMyVerificationSubmission = async ({
   }
 };
 
-const cleanOptional = (value: string) => {
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-};
-
 const hasAnyValue = (values: string[]) => values.some(value => value.trim().length > 0);
 
-const buildContactName = (firstName: string, lastName: string, fallback: string) => {
-  const name = [firstName, lastName].map(value => value.trim()).filter(Boolean).join(' ');
+const buildContactName = (firstName: string | null, lastName: string | null, fallback: string) => {
+  const name = [firstName, lastName].filter(Boolean).join(' ');
   return name || fallback;
+};
+
+const normalizeVerificationProfileUpdate = (
+  values: MemberVerificationProfileUpdate
+): MemberVerificationProfileUpdate => {
+  const normalized: MemberVerificationProfileUpdate = {};
+
+  for (const [key, value] of Object.entries(values) as Array<[keyof MemberVerificationProfileUpdate, any]>) {
+    switch (key) {
+      case 'preferred_name':
+        normalized.preferred_name = normalizeName(value, key);
+        break;
+      case 'personal_email':
+        normalized.personal_email = normalizeEmail(value, key);
+        break;
+      case 'phone':
+        normalized.phone = normalizePhone(value, key);
+        break;
+      case 'graduation_year':
+        normalized.graduation_year = normalizeGraduationYear(value, key);
+        break;
+      case 'expected_graduation_term':
+        normalized.expected_graduation_term = normalizeTerm(value, key, values.graduation_year);
+        break;
+      case 'housing_type':
+        normalized.housing_type = normalizeHousingType(value, key) as HousingType | null;
+        break;
+      case 'local_address':
+        normalized.local_address = normalizeAddressText(value);
+        break;
+      case 'campus_housing':
+        normalized.campus_housing = normalizeAddressText(value);
+        break;
+      case 'home_state':
+        normalized.home_state = normalizeState(value, key);
+        break;
+      case 'instagram':
+        normalized.instagram = normalizeInstagram(value);
+        break;
+      case 'snapchat':
+        normalized.snapchat = normalizeSnapchat(value);
+        break;
+      case 'linkedin':
+        normalized.linkedin = normalizeLinkedIn(value);
+        break;
+      case 'tshirt_size':
+        normalized.tshirt_size = normalizeApparelSize(value, key);
+        break;
+      case 'hoodie_size':
+        normalized.hoodie_size = normalizeApparelSize(value, key);
+        break;
+      case 'parent_outreach_consent':
+        normalized.parent_outreach_consent = Boolean(value);
+        break;
+      default:
+        normalized[key] = normalizeNullableText(value) as any;
+        break;
+    }
+  }
+
+  return normalized;
 };
 
 export const approveVerificationSubmission = async (submissionId: string, approvedBy: string) => {

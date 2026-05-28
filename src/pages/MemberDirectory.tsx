@@ -28,6 +28,7 @@ import {
   replaceCurrentStudyAbroadStatus,
   updateMemberDirectoryProfile
 } from '../lib/memberDirectory';
+import { NormalizationError } from '../lib/normalizers';
 
 type MemberTab = 'active' | 'alumni';
 type SortMode = 'last_name' | 'first_name';
@@ -52,6 +53,7 @@ type QuickRosterDraft = {
   birthday_day: string;
   bio: string;
 };
+type QuickRosterFieldErrors = Partial<Record<keyof QuickRosterDraft, string>>;
 
 export const MemberDirectory = () => {
   const { can } = useAuth();
@@ -64,6 +66,7 @@ export const MemberDirectory = () => {
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickFieldErrors, setQuickFieldErrors] = useState<QuickRosterFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<MemberTab>('active');
   const [search, setSearch] = useState('');
@@ -108,6 +111,7 @@ export const MemberDirectory = () => {
     setEditingMember(target);
     setQuickDraft(createQuickDraft(target));
     setQuickError(null);
+    setQuickFieldErrors({});
   };
 
   const saveQuickEditor = async () => {
@@ -146,7 +150,12 @@ export const MemberDirectory = () => {
       setQuickDraft(null);
     } catch (err) {
       console.error('Error saving quick roster data:', err);
-      setQuickError(err instanceof Error ? err.message : 'Unable to save member data.');
+      if (err instanceof NormalizationError) {
+        setQuickFieldErrors({ [err.field]: err.message } as QuickRosterFieldErrors);
+        setQuickError(err.message);
+      } else {
+        setQuickError(err instanceof Error ? err.message : 'Unable to save member data.');
+      }
     } finally {
       setQuickSaving(false);
     }
@@ -154,6 +163,7 @@ export const MemberDirectory = () => {
 
   const updateQuickDraft = (field: keyof QuickRosterDraft, value: string) => {
     setQuickDraft(current => current ? { ...current, [field]: value } : current);
+    setQuickFieldErrors(current => ({ ...current, [field]: undefined }));
   };
 
   const chooseQuickEditorMember = (memberId: string) => {
@@ -162,6 +172,7 @@ export const MemberDirectory = () => {
       setEditingMember(nextMember);
       setQuickDraft(createQuickDraft(nextMember));
       setQuickError(null);
+      setQuickFieldErrors({});
     }
   };
 
@@ -409,6 +420,7 @@ export const MemberDirectory = () => {
           draft={quickDraft}
           saving={quickSaving}
           error={quickError}
+          fieldErrors={quickFieldErrors}
           onSelectMember={chooseQuickEditorMember}
           onChange={updateQuickDraft}
           onSave={saveQuickEditor}
@@ -416,6 +428,7 @@ export const MemberDirectory = () => {
             setEditingMember(null);
             setQuickDraft(null);
             setQuickError(null);
+            setQuickFieldErrors({});
           }}
         />
       )}
@@ -429,6 +442,7 @@ const QuickRosterEditor = ({
   draft,
   saving,
   error,
+  fieldErrors,
   onSelectMember,
   onChange,
   onSave,
@@ -439,6 +453,7 @@ const QuickRosterEditor = ({
   draft: QuickRosterDraft | null;
   saving: boolean;
   error: string | null;
+  fieldErrors: QuickRosterFieldErrors;
   onSelectMember: (memberId: string) => void;
   onChange: (field: keyof QuickRosterDraft, value: string) => void;
   onSave: () => void;
@@ -485,35 +500,35 @@ const QuickRosterEditor = ({
 
         <div className="p-6 space-y-6">
           <QuickSection title="Identity">
-            <QuickField label="Legal First" value={draft.legal_first_name} onChange={value => onChange('legal_first_name', value)} />
-            <QuickField label="Legal Last" value={draft.legal_last_name} onChange={value => onChange('legal_last_name', value)} />
-            <QuickField label="Preferred Name" value={draft.preferred_name} onChange={value => onChange('preferred_name', value)} />
-            <QuickField label="Avatar URL" value={draft.avatar_url} onChange={value => onChange('avatar_url', value)} />
+            <QuickField label="Legal First" value={draft.legal_first_name} error={fieldErrors.legal_first_name} onChange={value => onChange('legal_first_name', value)} />
+            <QuickField label="Legal Last" value={draft.legal_last_name} error={fieldErrors.legal_last_name} onChange={value => onChange('legal_last_name', value)} />
+            <QuickField label="Preferred Name" value={draft.preferred_name} error={fieldErrors.preferred_name} onChange={value => onChange('preferred_name', value)} />
+            <QuickField label="Avatar URL" value={draft.avatar_url} error={fieldErrors.avatar_url} onChange={value => onChange('avatar_url', value)} />
           </QuickSection>
 
           <QuickSection title="Chapter And Academic">
-            <QuickField label="Class Year" value={draft.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
-            <QuickField label="Pledge Class" value={draft.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
-            <QuickField label="Study Abroad" value={draft.study_abroad_label} onChange={value => onChange('study_abroad_label', value)} placeholder="Madrid program" />
-            <QuickField label="Study Abroad Start" value={draft.study_abroad_start_term} onChange={value => onChange('study_abroad_start_term', value)} placeholder="Spring 2027" />
-            <QuickField label="Study Abroad End" value={draft.study_abroad_end_term} onChange={value => onChange('study_abroad_end_term', value)} placeholder="Summer 2027" />
-            <QuickField label="School" value={draft.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
-            <QuickField label="Major" value={draft.major} onChange={value => onChange('major', value)} />
-            <QuickField label="Birthday Month" value={draft.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
-            <QuickField label="Birthday Day" value={draft.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
+            <QuickField label="Class Year" value={draft.graduation_year} error={fieldErrors.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
+            <QuickField label="Pledge Class" value={draft.pledge_class} error={fieldErrors.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
+            <QuickField label="Study Abroad" value={draft.study_abroad_label} error={fieldErrors.study_abroad_label} onChange={value => onChange('study_abroad_label', value)} placeholder="Madrid program" />
+            <QuickField label="Study Abroad Start" value={draft.study_abroad_start_term} error={fieldErrors.study_abroad_start_term} onChange={value => onChange('study_abroad_start_term', value)} placeholder="Spring 2027" />
+            <QuickField label="Study Abroad End" value={draft.study_abroad_end_term} error={fieldErrors.study_abroad_end_term} onChange={value => onChange('study_abroad_end_term', value)} placeholder="Summer 2027" />
+            <QuickField label="School" value={draft.school} error={fieldErrors.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
+            <QuickField label="Major" value={draft.major} error={fieldErrors.major} onChange={value => onChange('major', value)} />
+            <QuickField label="Birthday Month" value={draft.birthday_month} error={fieldErrors.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
+            <QuickField label="Birthday Day" value={draft.birthday_day} error={fieldErrors.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
           </QuickSection>
 
           <QuickSection title="Contact And Social">
-            <QuickField label="Personal Email" value={draft.personal_email} onChange={value => onChange('personal_email', value)} />
-            <QuickField label="Phone" value={draft.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
-            <QuickField label="Instagram" value={draft.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
-            <QuickField label="Snapchat" value={draft.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
-            <QuickField label="LinkedIn" value={draft.linkedin} onChange={value => onChange('linkedin', value)} placeholder="linkedin.com/in/profile" />
+            <QuickField label="Personal Email" value={draft.personal_email} error={fieldErrors.personal_email} onChange={value => onChange('personal_email', value)} />
+            <QuickField label="Phone" value={draft.phone} error={fieldErrors.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
+            <QuickField label="Instagram" value={draft.instagram} error={fieldErrors.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
+            <QuickField label="Snapchat" value={draft.snapchat} error={fieldErrors.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
+            <QuickField label="LinkedIn" value={draft.linkedin} error={fieldErrors.linkedin} onChange={value => onChange('linkedin', value)} placeholder="linkedin.com/in/profile" />
           </QuickSection>
 
           <QuickSection title="Profile">
             <div className="md:col-span-2 xl:col-span-3">
-              <QuickField label="Bio" value={draft.bio} onChange={value => onChange('bio', value)} textarea />
+              <QuickField label="Bio" value={draft.bio} error={fieldErrors.bio} onChange={value => onChange('bio', value)} textarea />
             </div>
           </QuickSection>
         </div>
@@ -553,13 +568,15 @@ const QuickField = ({
   value,
   onChange,
   placeholder,
-  textarea = false
+  textarea = false,
+  error
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   textarea?: boolean;
+  error?: string;
 }) => (
   <label className="flex flex-col gap-2">
     <span className="text-[10px] uppercase tracking-[0.18rem] text-on-surface-variant font-black">{label}</span>
@@ -579,6 +596,7 @@ const QuickField = ({
         className="bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant/35 focus:ring-1 focus:ring-primary"
       />
     )}
+    {error && <span className="text-xs font-bold text-error">{error}</span>}
   </label>
 );
 

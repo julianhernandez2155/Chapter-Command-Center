@@ -3,15 +3,41 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Shield, ChevronRight, ArrowLeft, CheckCircle2, TrendingUp, Info } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { NormalizationError } from '../lib/normalizers';
+import { saveOnboardingProfile } from '../lib/onboarding';
+import { APPAREL_SIZE_OPTIONS, GUARDIAN_RELATIONSHIP_OPTIONS, getGraduationYearOptions } from '../lib/profileOptions';
+
+type OnboardingFormData = {
+  firstName: string;
+  lastName: string;
+  preferredName: string;
+  suid: string;
+  gradYear: string;
+  school: string;
+  major: string;
+  dorm: string;
+  room: string;
+  tshirtSize: string;
+  instagram: string;
+  snapchat: string;
+  linkedin: string;
+  venmo: string;
+  primaryContactName: string;
+  primaryContactRelation: string;
+  primaryContactPhone: string;
+  parentConsent: boolean;
+};
+
+type OnboardingFieldErrors = Partial<Record<keyof OnboardingFormData, string>>;
 
 export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
   const { user, refreshProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<OnboardingFieldErrors>({});
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<OnboardingFormData>({
     firstName: '',
     lastName: '',
     preferredName: '',
@@ -27,7 +53,7 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
     linkedin: '',
     venmo: '',
     primaryContactName: '',
-    primaryContactRelation: 'Parent / Guardian',
+    primaryContactRelation: 'Guardian',
     primaryContactPhone: '',
     parentConsent: false
   });
@@ -39,8 +65,9 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
         setError('First Name and Last Name are required.');
         return;
       }
-      if (!formData.suid.trim() || !/^\d{6}$/.test(formData.suid)) {
-        setError('SUID must be exactly 6 digits.');
+      if (!formData.suid.trim() || !/^\d{9}$/.test(formData.suid.trim())) {
+        setError('SUID must be exactly 9 digits.');
+        setFieldErrors({ suid: 'SUID must be exactly 9 digits.' });
         return;
       }
       if (!formData.school.trim() || !formData.major.trim()) {
@@ -56,6 +83,7 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
     }
 
     setError(null);
+    setFieldErrors({});
     setStep(s => Math.min(s + 1, 4));
   };
 
@@ -70,107 +98,18 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
     setError(null);
 
     try {
-      // 1. Check if member already exists by email
-      const { data: existingMember, error: fetchErr } = await supabase
-        .from('members')
-        .select('id')
-        .eq('google_email', user.email)
-        .maybeSingle();
-
-      if (fetchErr) throw fetchErr;
-
-      let memberId: string;
-
-      if (existingMember) {
-        // Update existing member record
-        const { data: updatedMember, error: updateErr } = await supabase
-          .from('members')
-          .update({
-            auth_user_id: user.id,
-            legal_first_name: formData.firstName.trim(),
-            legal_last_name: formData.lastName.trim(),
-            preferred_name: formData.preferredName.trim() || null,
-            suid: formData.suid.trim(),
-            graduation_year: parseInt(formData.gradYear, 10),
-            college: formData.school.trim(),
-            major: formData.major.trim(),
-            dorm_location: formData.dorm || null,
-            room: formData.room.trim() || null,
-            tshirt_size: formData.tshirtSize,
-            instagram: formData.instagram.trim() || null,
-            snapchat: formData.snapchat.trim() || null,
-            linkedin: formData.linkedin.trim() || null,
-            venmo: formData.venmo.trim() || null,
-            parent_outreach_consent: formData.parentConsent,
-          })
-          .eq('id', existingMember.id)
-          .select()
-          .single();
-
-        if (updateErr) throw updateErr;
-        memberId = existingMember.id;
-      } else {
-        // Insert new member record
-        const { data: newMember, error: insertErr } = await supabase
-          .from('members')
-          .insert({
-            auth_user_id: user.id,
-            google_email: user.email!,
-            legal_first_name: formData.firstName.trim(),
-            legal_last_name: formData.lastName.trim(),
-            preferred_name: formData.preferredName.trim() || null,
-            suid: formData.suid.trim(),
-            graduation_year: parseInt(formData.gradYear, 10),
-            college: formData.school.trim(),
-            major: formData.major.trim(),
-            dorm_location: formData.dorm || null,
-            room: formData.room.trim() || null,
-            tshirt_size: formData.tshirtSize,
-            instagram: formData.instagram.trim() || null,
-            snapchat: formData.snapchat.trim() || null,
-            linkedin: formData.linkedin.trim() || null,
-            venmo: formData.venmo.trim() || null,
-            parent_outreach_consent: formData.parentConsent,
-            status: 'active'
-          })
-          .select()
-          .single();
-
-        if (insertErr) throw insertErr;
-        if (!newMember) throw new Error('Failed to create member record.');
-        memberId = newMember.id;
-      }
-
-      // 2. Insert or update Emergency Contact
-      if (formData.primaryContactName.trim()) {
-        const { error: contactErr } = await supabase
-          .from('emergency_contacts')
-          .upsert({
-            member_id: memberId,
-            contact_name: formData.primaryContactName.trim(),
-            relationship: formData.primaryContactRelation,
-            phone: formData.primaryContactPhone.trim(),
-            is_primary: true
-          }, { onConflict: 'member_id' }); // Handled by constraint or direct write
-
-        if (contactErr) {
-          // If upsert fails because of schema check, try direct insert
-          await supabase.from('emergency_contacts').insert({
-            member_id: memberId,
-            contact_name: formData.primaryContactName.trim(),
-            relationship: formData.primaryContactRelation,
-            phone: formData.primaryContactPhone.trim(),
-            is_primary: true
-          });
-        }
-      }
-
-      // 3. Refresh Profile to update global React state
+      setFieldErrors({});
+      await saveOnboardingProfile(user, formData);
       await refreshProfile();
       onComplete();
     } catch (err: any) {
       console.error('Error during onboarding submission:', err);
-      setError(err?.message || 'Failed to complete onboarding ritual. Please check your inputs.');
+      if (err instanceof NormalizationError) {
+        setFieldErrors({ [err.field]: err.message } as OnboardingFieldErrors);
+        setError(err.message);
+      } else {
+        setError(err?.message || 'Failed to complete onboarding ritual. Please check your inputs.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -234,9 +173,9 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
           >
-            {step === 1 && <Step1 formData={formData} setFormData={setFormData} />}
-            {step === 2 && <Step2 formData={formData} setFormData={setFormData} />}
-            {step === 3 && <Step3 formData={formData} setFormData={setFormData} />}
+            {step === 1 && <Step1 formData={formData} setFormData={setFormData} fieldErrors={fieldErrors} />}
+            {step === 2 && <Step2 formData={formData} setFormData={setFormData} fieldErrors={fieldErrors} />}
+            {step === 3 && <Step3 formData={formData} setFormData={setFormData} fieldErrors={fieldErrors} />}
             {step === 4 && (
               <Step4 
                 formData={formData} 
@@ -276,7 +215,10 @@ export const Onboarding = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const Step1 = ({ formData, setFormData }: any) => (
+const FieldError = ({ message }: { message?: string }) =>
+  message ? <p className="text-xs font-bold text-error ml-4">{message}</p> : null;
+
+const Step1 = ({ formData, setFormData, fieldErrors }: any) => (
   <div className="space-y-12">
     <section>
       <div className="flex items-center gap-4 mb-8">
@@ -292,6 +234,7 @@ const Step1 = ({ formData, setFormData }: any) => (
             value={formData.firstName}
             onChange={e => setFormData({...formData, firstName: e.target.value})}
           />
+          <FieldError message={fieldErrors.firstName} />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Legal Last Name</label>
@@ -301,6 +244,7 @@ const Step1 = ({ formData, setFormData }: any) => (
             value={formData.lastName}
             onChange={e => setFormData({...formData, lastName: e.target.value})}
           />
+          <FieldError message={fieldErrors.lastName} />
         </div>
         <div className="md:col-span-2 space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Preferred Name / Alias</label>
@@ -321,14 +265,16 @@ const Step1 = ({ formData, setFormData }: any) => (
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">SUID (6-Digit)</label>
+          <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">SUID (9-Digit)</label>
           <input 
             className="w-full sunken-input font-mono tracking-widest" 
-            maxLength={6} 
-            placeholder="000000" 
+            maxLength={9}
+            inputMode="numeric"
+            placeholder="000000000"
             value={formData.suid}
             onChange={e => setFormData({...formData, suid: e.target.value})}
           />
+          <FieldError message={fieldErrors.suid} />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Graduation Year</label>
@@ -337,14 +283,11 @@ const Step1 = ({ formData, setFormData }: any) => (
             value={formData.gradYear}
             onChange={e => setFormData({...formData, gradYear: e.target.value})}
           >
-            <option>2024</option>
-            <option>2025</option>
-            <option>2026</option>
-            <option>2027</option>
-            <option>2028</option>
-            <option>2029</option>
-            <option>2030</option>
+            {getGraduationYearOptions(2024, 9).map(year => (
+              <option key={year}>{year}</option>
+            ))}
           </select>
+          <FieldError message={fieldErrors.gradYear} />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">School / College</label>
@@ -354,6 +297,7 @@ const Step1 = ({ formData, setFormData }: any) => (
             value={formData.school}
             onChange={e => setFormData({...formData, school: e.target.value})}
           />
+          <FieldError message={fieldErrors.school} />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Academic Major</label>
@@ -363,13 +307,14 @@ const Step1 = ({ formData, setFormData }: any) => (
             value={formData.major}
             onChange={e => setFormData({...formData, major: e.target.value})}
           />
+          <FieldError message={fieldErrors.major} />
         </div>
       </div>
     </section>
   </div>
 );
 
-const Step2 = ({ formData, setFormData }: any) => (
+const Step2 = ({ formData, setFormData, fieldErrors }: any) => (
   <div className="space-y-16">
     <section>
       <div className="flex items-center gap-4 mb-8">
@@ -408,8 +353,8 @@ const Step2 = ({ formData, setFormData }: any) => (
         </div>
         <div className="md:col-span-2 space-y-3">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">T-Shirt Size</label>
-          <div className="grid grid-cols-5 gap-2 bg-surface-container-lowest p-1.5 rounded-lg h-14">
-            {['S', 'M', 'L', 'XL', 'XXL'].map(size => (
+          <div className="grid grid-cols-6 gap-2 bg-surface-container-lowest p-1.5 rounded-lg h-14">
+            {APPAREL_SIZE_OPTIONS.map(size => (
               <button 
                 key={size}
                 type="button"
@@ -425,6 +370,7 @@ const Step2 = ({ formData, setFormData }: any) => (
               </button>
             ))}
           </div>
+          <FieldError message={fieldErrors.tshirtSize} />
         </div>
       </div>
     </section>
@@ -445,6 +391,7 @@ const Step2 = ({ formData, setFormData }: any) => (
               value={formData.instagram}
               onChange={e => setFormData({...formData, instagram: e.target.value})}
             />
+            <FieldError message={fieldErrors.instagram} />
           </div>
         </div>
         <div className="space-y-3">
@@ -455,6 +402,7 @@ const Step2 = ({ formData, setFormData }: any) => (
             value={formData.snapchat}
             onChange={e => setFormData({...formData, snapchat: e.target.value})}
           />
+          <FieldError message={fieldErrors.snapchat} />
         </div>
         <div className="md:col-span-2 space-y-3">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">LinkedIn URL</label>
@@ -464,6 +412,7 @@ const Step2 = ({ formData, setFormData }: any) => (
             value={formData.linkedin}
             onChange={e => setFormData({...formData, linkedin: e.target.value})}
           />
+          <FieldError message={fieldErrors.linkedin} />
         </div>
         <div className="md:col-span-2 space-y-3">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Venmo Handle</label>
@@ -482,7 +431,7 @@ const Step2 = ({ formData, setFormData }: any) => (
   </div>
 );
 
-const Step3 = ({ formData, setFormData }: any) => (
+const Step3 = ({ formData, setFormData, fieldErrors }: any) => (
   <div className="space-y-12">
     <section>
       <div className="flex items-center gap-4 mb-8">
@@ -498,6 +447,7 @@ const Step3 = ({ formData, setFormData }: any) => (
             value={formData.primaryContactName}
             onChange={e => setFormData({...formData, primaryContactName: e.target.value})}
           />
+          <FieldError message={fieldErrors.primaryContactName} />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Relationship</label>
@@ -506,11 +456,11 @@ const Step3 = ({ formData, setFormData }: any) => (
             value={formData.primaryContactRelation}
             onChange={e => setFormData({...formData, primaryContactRelation: e.target.value})}
           >
-            <option>Parent / Guardian</option>
-            <option>Sibling</option>
-            <option>Spouse / Partner</option>
-            <option>Other</option>
+            {GUARDIAN_RELATIONSHIP_OPTIONS.map(option => (
+              <option key={option}>{option}</option>
+            ))}
           </select>
+          <FieldError message={fieldErrors.primaryContactRelation} />
         </div>
         <div className="md:col-span-2 space-y-2">
           <label className="text-[10px] font-bold uppercase text-on-surface-variant/50 ml-4">Phone Number</label>
@@ -520,6 +470,7 @@ const Step3 = ({ formData, setFormData }: any) => (
             value={formData.primaryContactPhone}
             onChange={e => setFormData({...formData, primaryContactPhone: e.target.value})}
           />
+          <FieldError message={fieldErrors.primaryContactPhone} />
         </div>
       </div>
     </section>

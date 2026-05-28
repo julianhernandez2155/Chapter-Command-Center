@@ -1,4 +1,17 @@
 import { supabase } from './supabase';
+import {
+  normalizeAddressText,
+  normalizeApparelSize,
+  normalizeEmail,
+  normalizeGuardianRelationship,
+  normalizeHousingType,
+  normalizeInstagram,
+  normalizeLinkedIn,
+  normalizeNullableText,
+  normalizePhone,
+  normalizeSnapchat,
+  normalizeState
+} from './normalizers';
 
 export type SecretaryMemberStatus = 'active' | 'inactive' | 'suspended' | 'new_member' | 'alumni' | string;
 
@@ -176,9 +189,10 @@ export const updateSecretaryMemberProfile = async (
   memberId: string,
   values: SecretaryMemberProfileUpdate
 ) => {
+  const normalizedValues = normalizeSecretaryMemberProfileUpdate(values);
   const { error } = await supabase
     .from('members')
-    .update(values)
+    .update(normalizedValues)
     .eq('id', memberId);
 
   if (error) {
@@ -240,11 +254,72 @@ export const createSecretaryChaseBatch = async ({
 };
 
 export const upsertGuardianContact = async (values: GuardianContactUpsert) => {
+  const normalizedValues = {
+    ...values,
+    contact_name: normalizeNullableText(values.contact_name) ?? 'Parent/Guardian',
+    relationship: normalizeGuardianRelationship(values.relationship, `guardian_${values.contact_order}_relationship`),
+    phone: normalizePhone(values.phone, `guardian_${values.contact_order}_phone`),
+    email: normalizeEmail(values.email, `guardian_${values.contact_order}_email`)
+  };
+
   const { error } = await supabase
     .from('member_guardian_contacts')
-    .upsert(values, { onConflict: 'member_id,contact_order' });
+    .upsert(normalizedValues, { onConflict: 'member_id,contact_order' });
 
   if (error) {
     throw error;
   }
+};
+
+const normalizeSecretaryMemberProfileUpdate = (
+  values: SecretaryMemberProfileUpdate
+): SecretaryMemberProfileUpdate => {
+  const normalized: SecretaryMemberProfileUpdate = {};
+
+  for (const [key, value] of Object.entries(values) as Array<[keyof SecretaryMemberProfileUpdate, any]>) {
+    switch (key) {
+      case 'personal_email':
+        normalized.personal_email = normalizeEmail(value, key);
+        break;
+      case 'phone':
+        normalized.phone = normalizePhone(value, key);
+        break;
+      case 'housing_type':
+        normalized.housing_type = normalizeHousingType(value, key);
+        break;
+      case 'local_address':
+        normalized.local_address = normalizeAddressText(value);
+        break;
+      case 'campus_housing':
+        normalized.campus_housing = normalizeAddressText(value);
+        break;
+      case 'home_state':
+        normalized.home_state = normalizeState(value, key);
+        break;
+      case 'instagram':
+        normalized.instagram = normalizeInstagram(value);
+        break;
+      case 'snapchat':
+        normalized.snapchat = normalizeSnapchat(value);
+        break;
+      case 'linkedin':
+        normalized.linkedin = normalizeLinkedIn(value);
+        break;
+      case 'tshirt_size':
+        normalized.tshirt_size = normalizeApparelSize(value, key);
+        break;
+      case 'hoodie_size':
+        normalized.hoodie_size = normalizeApparelSize(value, key);
+        break;
+      case 'last_verified_at':
+      case 'last_chased_at':
+        normalized[key] = value;
+        break;
+      default:
+        normalized[key] = normalizeNullableText(value) as any;
+        break;
+    }
+  }
+
+  return normalized;
 };

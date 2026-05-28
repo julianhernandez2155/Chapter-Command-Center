@@ -1,4 +1,15 @@
 import { supabase } from './supabase';
+import {
+  normalizeEmail,
+  normalizeGraduationYear,
+  normalizeInstagram,
+  normalizeLinkedIn,
+  normalizeName,
+  normalizeNullableText,
+  normalizePhone,
+  normalizeSnapchat,
+  normalizeTerm
+} from './normalizers';
 
 export type DirectoryMemberStatus = 'active' | 'inactive' | 'suspended' | 'new_member' | 'alumni' | string;
 
@@ -164,9 +175,10 @@ export const updateMemberDirectoryProfile = async (
   memberId: string,
   values: MemberDirectoryProfileUpdate
 ) => {
+  const normalizedValues = normalizeMemberDirectoryProfileUpdate(values);
   const { error } = await supabase
     .from('members')
-    .update(values)
+    .update(normalizedValues)
     .eq('id', memberId);
 
   if (error) {
@@ -211,9 +223,9 @@ export const replaceCurrentStudyAbroadStatus = async (
   const payload = {
     member_id: memberId,
     status_type: 'study_abroad',
-    label: values.label,
-    start_term: values.start_term,
-    end_term: values.end_term
+    label: normalizeNullableText(values.label),
+    start_term: normalizeTerm(values.start_term, 'study_abroad_start_term'),
+    end_term: normalizeTerm(values.end_term, 'study_abroad_end_term')
   };
 
   if (currentStatus) {
@@ -266,6 +278,49 @@ const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember 
   created_at: row.created_at,
   updated_at: row.updated_at
 });
+
+const normalizeMemberDirectoryProfileUpdate = (
+  values: MemberDirectoryProfileUpdate
+): MemberDirectoryProfileUpdate => {
+  const normalized: MemberDirectoryProfileUpdate = {};
+
+  for (const [key, value] of Object.entries(values) as Array<[keyof MemberDirectoryProfileUpdate, any]>) {
+    switch (key) {
+      case 'legal_first_name':
+      case 'legal_last_name':
+      case 'preferred_name':
+        normalized[key] = normalizeName(value, key) as any;
+        break;
+      case 'personal_email':
+        normalized.personal_email = normalizeEmail(value, key);
+        break;
+      case 'phone':
+        normalized.phone = normalizePhone(value, key);
+        break;
+      case 'instagram':
+        normalized.instagram = normalizeInstagram(value);
+        break;
+      case 'snapchat':
+        normalized.snapchat = normalizeSnapchat(value);
+        break;
+      case 'linkedin':
+        normalized.linkedin = normalizeLinkedIn(value);
+        break;
+      case 'graduation_year':
+        normalized.graduation_year = normalizeGraduationYear(value, key);
+        break;
+      case 'birthday_month':
+      case 'birthday_day':
+        normalized[key] = value;
+        break;
+      default:
+        normalized[key] = normalizeNullableText(value) as any;
+        break;
+    }
+  }
+
+  return normalized;
+};
 
 const isCurrentStatusPeriod = (status: StudyAbroadStatusRow) => {
   const today = new Date();

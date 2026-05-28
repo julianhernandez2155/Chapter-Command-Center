@@ -11,6 +11,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { AddressInput } from '../components/AddressInput';
 import {
   HousingType,
   MemberVerificationContacts,
@@ -25,6 +26,23 @@ import {
   saveMyVerificationSubmission,
   updateMyVerificationProfile
 } from '../lib/memberVerification';
+import {
+  NormalizationError,
+  normalizeApparelSize,
+  normalizeEmail,
+  normalizeGraduationYear,
+  normalizeGuardianRelationship,
+  normalizePhone,
+  normalizeState,
+  normalizeTerm
+} from '../lib/normalizers';
+import {
+  APPAREL_SIZE_OPTIONS,
+  GRADUATION_TERM_OPTIONS,
+  GUARDIAN_RELATIONSHIP_OPTIONS,
+  HOUSING_TYPE_OPTIONS as PROFILE_HOUSING_TYPE_OPTIONS,
+  US_STATE_OPTIONS
+} from '../lib/profileOptions';
 
 type VerificationForm = {
   preferred_name: string;
@@ -61,6 +79,8 @@ type VerificationForm = {
   correction_notes: string;
 };
 
+type VerificationFieldErrors = Partial<Record<keyof VerificationForm, string>>;
+
 const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
   personal_email: 'Personal email',
   phone: 'Phone',
@@ -86,12 +106,9 @@ const OPTIONAL_FIELD_LABELS: Record<VerificationOptionalReviewField, string> = {
   parent_outreach_consent: 'Parent contact consent'
 };
 
-const SIZE_OPTIONS = ['', 'S', 'M', 'L', 'XL', 'XXL'];
 const HOUSING_TYPE_OPTIONS: Array<{ value: '' | HousingType; label: string }> = [
   { value: '', label: 'Select housing type' },
-  { value: 'on_campus', label: 'On Campus' },
-  { value: 'off_campus', label: 'Off-campus' },
-  { value: 'chapter_housing', label: 'Chapter Housing' }
+  ...PROFILE_HOUSING_TYPE_OPTIONS.map(option => ({ value: option.value, label: option.label }))
 ];
 
 export const MemberVerification = () => {
@@ -103,6 +120,7 @@ export const MemberVerification = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<VerificationFieldErrors>({});
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -173,10 +191,12 @@ export const MemberVerification = () => {
   const updateForm = <K extends keyof VerificationForm>(key: K, value: VerificationForm[K]) => {
     setForm(current => current ? { ...current, [key]: value } : current);
     setError(null);
+    setFieldErrors(current => ({ ...current, [key]: undefined }));
   };
 
   const saveProgress = async () => {
     if (!form || !profile || !gateStatus) return;
+    if (!validateFormForSave(form)) return;
 
     setSaving(true);
     setError(null);
@@ -199,7 +219,7 @@ export const MemberVerification = () => {
       setGateStatus(freshGate);
     } catch (err) {
       console.error('Unable to save verification progress:', err);
-      setError('Progress could not be saved. Check the highlighted fields and try again.');
+      handleSaveError(err, setError, setFieldErrors);
     } finally {
       setSaving(false);
     }
@@ -209,6 +229,8 @@ export const MemberVerification = () => {
     if (!form || !profile || !gateStatus) return;
 
     const missing = computeMissingRequiredFields(form);
+    if (!validateFormForSave(form)) return;
+
     if (missing.length > 0) {
       setError(`Complete required fields first: ${missing.map(field => getRequiredFieldLabel(field, form)).join(', ')}.`);
       return;
@@ -236,10 +258,20 @@ export const MemberVerification = () => {
       navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Unable to submit verification:', err);
-      setError('Verification could not be submitted. Try again.');
+      handleSaveError(err, setError, setFieldErrors);
     } finally {
       setSaving(false);
     }
+  };
+
+  const validateFormForSave = (currentForm: VerificationForm) => {
+    const nextErrors = getVerificationFieldErrors(currentForm);
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      setError('Fix highlighted fields before saving.');
+      return false;
+    }
+    return true;
   };
 
   return (
@@ -288,86 +320,97 @@ export const MemberVerification = () => {
                 <ReadonlyField label="Legal name" value={`${profile.legal_first_name} ${profile.legal_last_name}`} />
                 <ReadonlyField label="SUID" value={profile.suid} />
                 <ReadonlyField label="School email" value={profile.google_email} />
-                <TextField label="Preferred name" value={form.preferred_name} onChange={value => updateForm('preferred_name', value)} />
+                <TextField label="Preferred name" value={form.preferred_name} error={fieldErrors.preferred_name} onChange={value => updateForm('preferred_name', value)} />
               </VerificationSection>
 
               <VerificationSection title="Contact">
-                <TextField required label="Personal email" value={form.personal_email} onChange={value => updateForm('personal_email', value)} />
-                <TextField required label="Phone" value={form.phone} onChange={value => updateForm('phone', value)} />
-                <TextField required label="Home city" value={form.home_city} onChange={value => updateForm('home_city', value)} />
-                <TextField required label="Home state" value={form.home_state} onChange={value => updateForm('home_state', value)} />
+                <TextField required label="Personal email" value={form.personal_email} error={fieldErrors.personal_email} onChange={value => updateForm('personal_email', value)} />
+                <TextField required label="Phone" value={form.phone} error={fieldErrors.phone} onChange={value => updateForm('phone', value)} />
+                <TextField required label="Home city" value={form.home_city} error={fieldErrors.home_city} onChange={value => updateForm('home_city', value)} />
+                <OptionSelectField required label="Home state" value={form.home_state} error={fieldErrors.home_state} options={[{ value: '', label: 'Select state' }, ...US_STATE_OPTIONS]} onChange={value => updateForm('home_state', value)} />
               </VerificationSection>
 
               <VerificationSection title="Housing">
-                <HousingTypeField value={form.housing_type} onChange={value => updateForm('housing_type', value)} />
+                <HousingTypeField value={form.housing_type} error={fieldErrors.housing_type} onChange={value => updateForm('housing_type', value)} />
                 {form.housing_type === 'on_campus' && (
-                  <TextField
+                  <AddressInput
                     required
                     label="Dorm / building name"
                     value={form.campus_housing}
-                    placeholder="Haven Hall, Sadler Hall, etc."
+                    mode="campus"
+                    error={fieldErrors.campus_housing}
                     onChange={value => updateForm('campus_housing', value)}
                   />
                 )}
                 {form.housing_type === 'off_campus' && (
                   <>
-                    <TextField
+                    <AddressInput
                       required
                       label="Local street address"
                       value={form.local_address}
-                      placeholder="Street address or apartment address"
+                      mode="street"
+                      error={fieldErrors.local_address}
                       onChange={value => updateForm('local_address', value)}
                     />
-                    <TextField
+                    <AddressInput
                       label="Apartment / building name"
                       value={form.campus_housing}
-                      placeholder="Optional"
+                      mode="campus"
+                      error={fieldErrors.campus_housing}
                       onChange={value => updateForm('campus_housing', value)}
                     />
                   </>
                 )}
                 {form.housing_type === 'chapter_housing' && (
-                  <TextField
+                  <AddressInput
                     required
                     label="Room number"
                     value={form.campus_housing}
-                    placeholder="Room 204, 3B, etc."
+                    mode="chapter_room"
+                    error={fieldErrors.campus_housing}
                     onChange={value => updateForm('campus_housing', value)}
                   />
                 )}
               </VerificationSection>
 
               <VerificationSection title="Academic">
-                <TextField required label="School" value={form.school} onChange={value => updateForm('school', value)} />
-                <TextField required label="Major" value={form.major} onChange={value => updateForm('major', value)} />
-                <TextField required label="Graduation year" value={form.graduation_year} inputMode="numeric" onChange={value => updateForm('graduation_year', value)} />
-                <TextField required label="Expected grad term" value={form.expected_graduation_term} placeholder="Spring 2027" onChange={value => updateForm('expected_graduation_term', value)} />
+                <TextField required label="School" value={form.school} error={fieldErrors.school} onChange={value => updateForm('school', value)} />
+                <TextField required label="Major" value={form.major} error={fieldErrors.major} onChange={value => updateForm('major', value)} />
+                <TextField required label="Graduation year" value={form.graduation_year} error={fieldErrors.graduation_year} inputMode="numeric" onChange={value => updateForm('graduation_year', value)} />
+                <OptionSelectField
+                  required
+                  label="Expected grad term"
+                  value={form.expected_graduation_term.split(' ')[0]}
+                  error={fieldErrors.expected_graduation_term}
+                  options={[{ value: '', label: 'Select term' }, ...GRADUATION_TERM_OPTIONS.map(term => ({ value: term, label: term }))]}
+                  onChange={value => updateForm('expected_graduation_term', value && form.graduation_year ? `${value} ${form.graduation_year}` : value)}
+                />
               </VerificationSection>
 
               <VerificationSection title="Apparel & Social">
-                <SelectField required label="T-shirt size" value={form.tshirt_size} options={SIZE_OPTIONS} onChange={value => updateForm('tshirt_size', value)} />
-                <SelectField required label="Hoodie size" value={form.hoodie_size} options={SIZE_OPTIONS} onChange={value => updateForm('hoodie_size', value)} />
-                <TextField label="Instagram" value={form.instagram} onChange={value => updateForm('instagram', value)} />
-                <TextField label="Snapchat" value={form.snapchat} onChange={value => updateForm('snapchat', value)} />
-                <TextField label="LinkedIn" value={form.linkedin} onChange={value => updateForm('linkedin', value)} />
+                <SelectField required label="T-shirt size" value={form.tshirt_size} error={fieldErrors.tshirt_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('tshirt_size', value)} />
+                <SelectField required label="Hoodie size" value={form.hoodie_size} error={fieldErrors.hoodie_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('hoodie_size', value)} />
+                <TextField label="Instagram" value={form.instagram} error={fieldErrors.instagram} onChange={value => updateForm('instagram', value)} />
+                <TextField label="Snapchat" value={form.snapchat} error={fieldErrors.snapchat} onChange={value => updateForm('snapchat', value)} />
+                <TextField label="LinkedIn" value={form.linkedin} error={fieldErrors.linkedin} onChange={value => updateForm('linkedin', value)} />
               </VerificationSection>
 
               <VerificationSection title="Parent / Guardian Contact">
                 <ContactGroup title="Parent / Guardian 1">
-                  <TextField required label="First name" value={form.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
-                  <TextField required label="Last name" value={form.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
-                  <TextField required label="Phone" value={form.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
-                  <TextField required label="Email" value={form.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
-                  <TextField required label="Relationship" value={form.guardian_1_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_1_relationship', value)} />
+                  <TextField required label="First name" value={form.guardian_1_first_name} error={fieldErrors.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
+                  <TextField required label="Last name" value={form.guardian_1_last_name} error={fieldErrors.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
+                  <TextField required label="Phone" value={form.guardian_1_phone} error={fieldErrors.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
+                  <TextField required label="Email" value={form.guardian_1_email} error={fieldErrors.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
+                  <OptionSelectField required label="Relationship" value={form.guardian_1_relationship} error={fieldErrors.guardian_1_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_1_relationship', value)} />
                   <ConsentField checked={form.guardian_1_outreach_consent} onChange={value => updateForm('guardian_1_outreach_consent', value)} />
                 </ContactGroup>
 
                 <ContactGroup title="Parent / Guardian 2">
-                  <TextField label="First name" value={form.guardian_2_first_name} onChange={value => updateForm('guardian_2_first_name', value)} />
-                  <TextField label="Last name" value={form.guardian_2_last_name} onChange={value => updateForm('guardian_2_last_name', value)} />
-                  <TextField label="Phone" value={form.guardian_2_phone} onChange={value => updateForm('guardian_2_phone', value)} />
-                  <TextField label="Email" value={form.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
-                  <TextField label="Relationship" value={form.guardian_2_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_2_relationship', value)} />
+                  <TextField label="First name" value={form.guardian_2_first_name} error={fieldErrors.guardian_2_first_name} onChange={value => updateForm('guardian_2_first_name', value)} />
+                  <TextField label="Last name" value={form.guardian_2_last_name} error={fieldErrors.guardian_2_last_name} onChange={value => updateForm('guardian_2_last_name', value)} />
+                  <TextField label="Phone" value={form.guardian_2_phone} error={fieldErrors.guardian_2_phone} onChange={value => updateForm('guardian_2_phone', value)} />
+                  <TextField label="Email" value={form.guardian_2_email} error={fieldErrors.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
+                  <OptionSelectField label="Relationship" value={form.guardian_2_relationship} error={fieldErrors.guardian_2_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_2_relationship', value)} />
                   <ConsentField checked={form.guardian_2_outreach_consent} onChange={value => updateForm('guardian_2_outreach_consent', value)} />
                 </ContactGroup>
               </VerificationSection>
@@ -455,7 +498,8 @@ const TextField = ({
   onChange,
   required,
   placeholder,
-  inputMode
+  inputMode,
+  error
 }: {
   label: string;
   value: string;
@@ -463,6 +507,7 @@ const TextField = ({
   required?: boolean;
   placeholder?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  error?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -475,6 +520,7 @@ const TextField = ({
       inputMode={inputMode}
       className="mt-2 w-full min-h-12 rounded-2xl bg-surface-container-lowest px-4 py-3 text-on-surface font-bold outline-none focus:ring-2 focus:ring-primary/70"
     />
+    {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
   </label>
 );
 
@@ -483,13 +529,15 @@ const SelectField = ({
   value,
   options,
   onChange,
-  required
+  required,
+  error
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
   required?: boolean;
+  error?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -504,15 +552,50 @@ const SelectField = ({
         <option key={option || 'blank'} value={option}>{option || 'Select'}</option>
       ))}
     </select>
+    {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+  </label>
+);
+
+const OptionSelectField = ({
+  label,
+  value,
+  options,
+  onChange,
+  required,
+  error
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  required?: boolean;
+  error?: string;
+}) => (
+  <label className="block">
+    <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
+      {label}{required && <span className="text-primary"> *</span>}
+    </span>
+    <select
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      className="mt-2 w-full min-h-12 rounded-2xl bg-surface-container-lowest px-4 py-3 text-on-surface font-bold outline-none focus:ring-2 focus:ring-primary/70 cursor-pointer"
+    >
+      {options.map(option => (
+        <option key={option.value || 'blank'} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+    {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
   </label>
 );
 
 const HousingTypeField = ({
   value,
-  onChange
+  onChange,
+  error
 }: {
   value: '' | HousingType;
   onChange: (value: '' | HousingType) => void;
+  error?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -527,6 +610,7 @@ const HousingTypeField = ({
         <option key={option.value || 'blank'} value={option.value}>{option.label}</option>
       ))}
     </select>
+    {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
   </label>
 );
 
@@ -623,22 +707,22 @@ function toForm(profile: MemberVerificationSelfProfile, contacts: MemberVerifica
 function toProfileUpdate(form: VerificationForm) {
   return {
     preferred_name: clean(form.preferred_name),
-    personal_email: clean(form.personal_email),
-    phone: clean(form.phone),
-    graduation_year: form.graduation_year ? Number(form.graduation_year) : null,
-    expected_graduation_term: clean(form.expected_graduation_term),
+    personal_email: normalizeEmail(form.personal_email, 'personal_email'),
+    phone: normalizePhone(form.phone, 'phone'),
+    graduation_year: normalizeGraduationYear(form.graduation_year, 'graduation_year'),
+    expected_graduation_term: normalizeTerm(form.expected_graduation_term, 'expected_graduation_term', form.graduation_year),
     school: clean(form.school),
     major: clean(form.major),
     housing_type: form.housing_type || null,
     local_address: clean(form.local_address),
     campus_housing: clean(form.campus_housing),
     home_city: clean(form.home_city),
-    home_state: clean(form.home_state),
+    home_state: normalizeState(form.home_state, 'home_state'),
     instagram: clean(form.instagram),
     snapchat: clean(form.snapchat),
     linkedin: clean(form.linkedin),
-    tshirt_size: clean(form.tshirt_size),
-    hoodie_size: clean(form.hoodie_size),
+    tshirt_size: normalizeApparelSize(form.tshirt_size, 'tshirt_size'),
+    hoodie_size: normalizeApparelSize(form.hoodie_size, 'hoodie_size'),
     parent_outreach_consent: hasParentOutreachConsent(form)
   };
 }
@@ -789,6 +873,71 @@ function lastNameFallback(contactName?: string | null) {
 function clean(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function getVerificationFieldErrors(form: VerificationForm): VerificationFieldErrors {
+  const errors: VerificationFieldErrors = {};
+  const check = (field: keyof VerificationForm, callback: () => void) => {
+    try {
+      callback();
+    } catch (err) {
+      if (err instanceof NormalizationError) {
+        errors[field] = err.message;
+      } else {
+        throw err;
+      }
+    }
+  };
+
+  if (form.personal_email.trim()) check('personal_email', () => { normalizeEmail(form.personal_email, 'personal_email'); });
+  if (form.phone.trim()) check('phone', () => { normalizePhone(form.phone, 'phone'); });
+  if (form.home_state.trim()) check('home_state', () => { normalizeState(form.home_state, 'home_state'); });
+  if (form.graduation_year.trim()) check('graduation_year', () => { normalizeGraduationYear(form.graduation_year, 'graduation_year'); });
+  if (form.expected_graduation_term.trim()) {
+    check('expected_graduation_term', () => {
+      normalizeTerm(form.expected_graduation_term, 'expected_graduation_term', form.graduation_year);
+    });
+  }
+  if (form.tshirt_size.trim()) check('tshirt_size', () => { normalizeApparelSize(form.tshirt_size, 'tshirt_size'); });
+  if (form.hoodie_size.trim()) check('hoodie_size', () => { normalizeApparelSize(form.hoodie_size, 'hoodie_size'); });
+
+  if (form.guardian_1_relationship.trim()) {
+    check('guardian_1_relationship', () => { normalizeGuardianRelationship(form.guardian_1_relationship, 'guardian_1_relationship'); });
+  }
+  if (form.guardian_1_phone.trim()) check('guardian_1_phone', () => { normalizePhone(form.guardian_1_phone, 'guardian_1_phone'); });
+  if (form.guardian_1_email.trim()) check('guardian_1_email', () => { normalizeEmail(form.guardian_1_email, 'guardian_1_email'); });
+
+  const guardianTwoHasAny = [
+    form.guardian_2_first_name,
+    form.guardian_2_last_name,
+    form.guardian_2_relationship,
+    form.guardian_2_phone,
+    form.guardian_2_email
+  ].some(value => value.trim());
+
+  if (guardianTwoHasAny) {
+    if (form.guardian_2_relationship.trim()) {
+      check('guardian_2_relationship', () => { normalizeGuardianRelationship(form.guardian_2_relationship, 'guardian_2_relationship'); });
+    }
+    if (form.guardian_2_phone.trim()) check('guardian_2_phone', () => { normalizePhone(form.guardian_2_phone, 'guardian_2_phone'); });
+    if (form.guardian_2_email.trim()) check('guardian_2_email', () => { normalizeEmail(form.guardian_2_email, 'guardian_2_email'); });
+  }
+
+  return errors;
+}
+
+function handleSaveError(
+  err: unknown,
+  setError: (value: string | null) => void,
+  setFieldErrors: React.Dispatch<React.SetStateAction<VerificationFieldErrors>>
+) {
+  if (err instanceof NormalizationError) {
+    setFieldErrors(current => ({ ...current, [err.field]: err.message }));
+    setError(err.message);
+    return;
+  }
+
+  setError('Progress could not be saved. Check the highlighted fields and try again.');
 }
 
 function formatDate(value: string) {
