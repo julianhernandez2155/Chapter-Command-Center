@@ -38,7 +38,7 @@ import {
 type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
 type Density = 'compact' | 'standard' | 'comfortable';
 type SortDirection = 'asc' | 'desc';
-type WorkflowKey = 'verification' | 'chase' | 'exports' | 'graduation';
+type WorkflowKey = 'verification' | 'chase' | 'graduation';
 type ExportPresetId = 'contact_sheet' | 'parent_consent' | 'missing_info' | 'study_abroad' | 'greek_life_fasa';
 type VerificationFilter = 'all' | 'verified' | 'unverified' | 'stale_30';
 type MissingFilter = 'all' | 'missing' | 'complete';
@@ -201,9 +201,8 @@ const SYSTEM_VIEWS: RegistrySavedView[] = [
 const INITIAL_VIEW = SYSTEM_VIEWS[0];
 
 const WORKFLOWS: Array<{ id: WorkflowKey; label: string; icon: React.ReactNode }> = [
-  { id: 'verification', label: 'Verification', icon: <CheckCircle2 size={18} /> },
+  { id: 'verification', label: 'Verification Queue', icon: <CheckCircle2 size={18} /> },
   { id: 'chase', label: 'Missing Info Chase', icon: <ClipboardCheck size={18} /> },
-  { id: 'exports', label: 'Export Presets', icon: <FileSpreadsheet size={18} /> },
   { id: 'graduation', label: 'Graduation Review', icon: <GraduationCap size={18} /> }
 ];
 
@@ -262,6 +261,8 @@ export const SecretaryMemberRegistry = () => {
   const [columnPanelOpen, setColumnPanelOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [viewNameDraft, setViewNameDraft] = useState('');
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowKey>('verification');
   const [copiedComposerField, setCopiedComposerField] = useState<string | null>(null);
@@ -373,10 +374,6 @@ export const SecretaryMemberRegistry = () => {
     () => members.filter(member => member.missing_required_field_count > 0),
     [members]
   );
-  const currentStudyAbroadMembers = useMemo(
-    () => members.filter(member => member.current_status_type === 'study_abroad' || Boolean(member.current_status_label)),
-    [members]
-  );
   const graduationReviewMembers = useMemo(
     () => members.filter(isGraduationReviewCandidate),
     [members]
@@ -394,6 +391,54 @@ export const SecretaryMemberRegistry = () => {
   const verifiedCount = members.filter(member => member.last_verified_at).length;
   const sensitiveView = activeView.sensitive || activeColumns.some(column => column.sensitivity === 'family_contact');
 
+  const closeFloatingPanels = () => {
+    setViewMenuOpen(false);
+    setFilterPanelOpen(false);
+    setColumnPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
+  };
+
+  const toggleViewMenu = () => {
+    setFilterPanelOpen(false);
+    setColumnPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
+    setViewMenuOpen(current => !current);
+  };
+
+  const toggleFilterPanel = () => {
+    setViewMenuOpen(false);
+    setColumnPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
+    setFilterPanelOpen(current => !current);
+  };
+
+  const toggleColumnPanel = () => {
+    setViewMenuOpen(false);
+    setFilterPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
+    setColumnPanelOpen(current => !current);
+  };
+
+  const toggleWorkflowPanel = () => {
+    setViewMenuOpen(false);
+    setFilterPanelOpen(false);
+    setColumnPanelOpen(false);
+    setExportMenuOpen(false);
+    setWorkflowPanelOpen(current => !current);
+  };
+
+  const toggleExportMenu = () => {
+    setViewMenuOpen(false);
+    setFilterPanelOpen(false);
+    setColumnPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(current => !current);
+  };
+
   const selectView = (view: RegistrySavedView) => {
     setActiveViewId(view.id);
     setActiveBaseViewLabel(view.label);
@@ -405,6 +450,8 @@ export const SecretaryMemberRegistry = () => {
     setColumnPanelOpen(false);
     setFilterPanelOpen(false);
     setViewMenuOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
   };
 
   const updateFilter = <K extends keyof RegistryFilters>(key: K, value: RegistryFilters[K]) => {
@@ -442,6 +489,8 @@ export const SecretaryMemberRegistry = () => {
     setActiveBaseViewLabel(view.label);
     setViewNameDraft('');
     setColumnPanelOpen(false);
+    setWorkflowPanelOpen(false);
+    setExportMenuOpen(false);
   };
 
   const deleteCustomView = (viewId: string) => {
@@ -625,14 +674,13 @@ export const SecretaryMemberRegistry = () => {
               <Copy size={15} />
               {selectedRows.length > 0 ? `Copy ${selectedRows.length} Emails` : 'Copy Emails'}
             </button>
-            <button
-              onClick={() => void exportVisibleRows()}
-              disabled={exporting}
-              className="bg-primary text-white px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-              Export Excel
-            </button>
+            <ExportDropdown
+              open={exportMenuOpen}
+              exporting={exporting}
+              onToggle={toggleExportMenu}
+              onExportCurrent={() => void exportVisibleRows()}
+              onExportPreset={presetId => void exportPreset(presetId)}
+            />
           </div>
         </div>
 
@@ -644,7 +692,7 @@ export const SecretaryMemberRegistry = () => {
                 systemViews={SYSTEM_VIEWS}
                 customViews={customViews}
                 open={viewMenuOpen}
-                onToggle={() => setViewMenuOpen(current => !current)}
+                onToggle={toggleViewMenu}
                 onSelect={selectView}
                 onDelete={deleteCustomView}
               />
@@ -662,7 +710,7 @@ export const SecretaryMemberRegistry = () => {
 
             <div className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => setFilterPanelOpen(current => !current)}
+                onClick={toggleFilterPanel}
                 className={cn(
                   'rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors',
                   filterPanelOpen ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
@@ -677,7 +725,7 @@ export const SecretaryMemberRegistry = () => {
                 )}
               </button>
               <button
-                onClick={() => setColumnPanelOpen(current => !current)}
+                onClick={toggleColumnPanel}
                 className={cn(
                   'rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors',
                   columnPanelOpen ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
@@ -685,6 +733,16 @@ export const SecretaryMemberRegistry = () => {
               >
                 <Columns3 size={15} />
                 Customize
+              </button>
+              <button
+                onClick={toggleWorkflowPanel}
+                className={cn(
+                  'rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors',
+                  workflowPanelOpen ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
+                )}
+              >
+                <ClipboardCheck size={15} />
+                Workflows
               </button>
             </div>
           </div>
@@ -737,27 +795,23 @@ export const SecretaryMemberRegistry = () => {
           )}
         </div>
 
-        <GuidedWorkflows
-          activeWorkflow={activeWorkflow}
-          members={members}
-          visibleMembers={visibleMembers}
-          selectedRows={selectedRows}
-          verificationDueMembers={verificationDueMembers}
-          missingInfoMembers={missingInfoMembers}
-          currentStudyAbroadMembers={currentStudyAbroadMembers}
-          graduationReviewMembers={graduationReviewMembers}
-          chaseRows={chaseRows}
-          composer={chaseComposer}
-          copiedComposerField={copiedComposerField}
-          lastChaseBatchId={lastChaseBatchId}
-          saving={savingId === 'chase-batch'}
-          exporting={exporting}
-          onWorkflowChange={setActiveWorkflow}
-          onCopyComposerField={(label, value) => void copyComposerField(label, value)}
-          onTrackChaseBatch={() => void trackChaseBatch()}
-          onExportPreset={presetId => void exportPreset(presetId)}
-          onSelectView={selectView}
-        />
+        {workflowPanelOpen && (
+          <GuidedWorkflows
+            activeWorkflow={activeWorkflow}
+            verificationDueMembers={verificationDueMembers}
+            missingInfoMembers={missingInfoMembers}
+            graduationReviewMembers={graduationReviewMembers}
+            chaseRows={chaseRows}
+            composer={chaseComposer}
+            copiedComposerField={copiedComposerField}
+            lastChaseBatchId={lastChaseBatchId}
+            saving={savingId === 'chase-batch'}
+            onWorkflowChange={setActiveWorkflow}
+            onCopyComposerField={(label, value) => void copyComposerField(label, value)}
+            onTrackChaseBatch={() => void trackChaseBatch()}
+            onSelectView={selectView}
+          />
+        )}
       </section>
 
       {loading && (
@@ -816,6 +870,7 @@ export const SecretaryMemberRegistry = () => {
               onSort={setSortColumn}
               onMarkVerified={member => void markVerified(member)}
               onMarkChased={member => void markChased(member)}
+              onBeforeSelect={closeFloatingPanels}
             />
           </div>
 
@@ -829,6 +884,70 @@ export const SecretaryMemberRegistry = () => {
             />
           )}
         </section>
+      )}
+    </div>
+  );
+};
+
+const ExportDropdown = ({
+  open,
+  exporting,
+  onToggle,
+  onExportCurrent,
+  onExportPreset
+}: {
+  open: boolean;
+  exporting: boolean;
+  onToggle: () => void;
+  onExportCurrent: () => void;
+  onExportPreset: (presetId: ExportPresetId) => void;
+}) => {
+  const runExport = (callback: () => void) => {
+    onToggle();
+    callback();
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={onToggle}
+        disabled={exporting}
+        className="bg-primary text-white px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50 w-full sm:w-auto"
+      >
+        {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+        Export
+        <ChevronDown size={14} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-14 z-[90] w-80 bg-surface-container-lowest rounded-2xl p-3 shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
+          <button
+            onClick={() => runExport(onExportCurrent)}
+            className="w-full rounded-xl px-3 py-3 text-left text-on-surface hover:bg-surface-container-high transition-colors"
+          >
+            <p className="text-xs font-black uppercase tracking-[0.14rem] flex items-center gap-2">
+              <Download size={14} className="text-primary" />
+              Current View
+            </p>
+            <p className="text-[11px] text-on-surface-variant mt-1">Export the visible table columns.</p>
+          </button>
+
+          <div className="my-2 h-px bg-white/10" />
+
+          {EXPORT_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              onClick={() => runExport(() => onExportPreset(preset.id))}
+              className="w-full rounded-xl px-3 py-3 text-left text-on-surface hover:bg-surface-container-high transition-colors"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.14rem] flex items-center gap-2">
+                <FileSpreadsheet size={14} className="text-primary" />
+                {preset.label}
+              </p>
+              <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-1">{preset.description}</p>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1153,49 +1272,36 @@ const TableToolbar = ({
 
 const GuidedWorkflows = ({
   activeWorkflow,
-  members,
-  visibleMembers,
-  selectedRows,
   verificationDueMembers,
   missingInfoMembers,
-  currentStudyAbroadMembers,
   graduationReviewMembers,
   chaseRows,
   composer,
   copiedComposerField,
   lastChaseBatchId,
   saving,
-  exporting,
   onWorkflowChange,
   onCopyComposerField,
   onTrackChaseBatch,
-  onExportPreset,
   onSelectView
 }: {
   activeWorkflow: WorkflowKey;
-  members: SecretaryMemberProfile[];
-  visibleMembers: SecretaryMemberProfile[];
-  selectedRows: SecretaryMemberProfile[];
   verificationDueMembers: SecretaryMemberProfile[];
   missingInfoMembers: SecretaryMemberProfile[];
-  currentStudyAbroadMembers: SecretaryMemberProfile[];
   graduationReviewMembers: SecretaryMemberProfile[];
   chaseRows: SecretaryMemberProfile[];
   composer: ChaseComposer;
   copiedComposerField: string | null;
   lastChaseBatchId: string | null;
   saving: boolean;
-  exporting: boolean;
   onWorkflowChange: (workflow: WorkflowKey) => void;
   onCopyComposerField: (label: string, value: string) => void;
   onTrackChaseBatch: () => void;
-  onExportPreset: (presetId: ExportPresetId) => void;
   onSelectView: (view: RegistrySavedView) => void;
 }) => {
   const workflowStats = {
     verification: verificationDueMembers.length,
     chase: missingInfoMembers.length,
-    exports: visibleMembers.length,
     graduation: graduationReviewMembers.length
   };
 
@@ -1240,7 +1346,7 @@ const GuidedWorkflows = ({
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Missing Info Chase</p>
-                <h3 className="text-xl font-black text-on-surface mt-1">{chaseRows.length} recipients</h3>
+                <h3 className="text-xl font-black text-on-surface mt-1">Batch BCC · {chaseRows.length} recipients</h3>
               </div>
               <button
                 onClick={onTrackChaseBatch}
@@ -1251,9 +1357,9 @@ const GuidedWorkflows = ({
                 Mark Chased
               </button>
             </div>
-            <ComposerField label="Recipients" value={composer.recipientLine} copied={copiedComposerField === 'Recipients'} onCopy={() => onCopyComposerField('Recipients', composer.recipientLine)} />
-            <ComposerField label="Subject" value={composer.subject} copied={copiedComposerField === 'Subject'} onCopy={() => onCopyComposerField('Subject', composer.subject)} />
-            <ComposerField label="Body" value={composer.body} copied={copiedComposerField === 'Body'} multiline copiedLabel="Copied body" onCopy={() => onCopyComposerField('Body', composer.body)} />
+            <ComposerField label="BCC recipients" copyLabel="Copy BCC" value={composer.recipientLine} copied={copiedComposerField === 'BCC'} onCopy={() => onCopyComposerField('BCC', composer.recipientLine)} />
+            <ComposerField label="Subject" copyLabel="Copy Subject" value={composer.subject} copied={copiedComposerField === 'Subject'} onCopy={() => onCopyComposerField('Subject', composer.subject)} />
+            <ComposerField label="Body" copyLabel="Copy Body" value={composer.body} copied={copiedComposerField === 'Body'} multiline copiedLabel="Copied body" onCopy={() => onCopyComposerField('Body', composer.body)} />
             {lastChaseBatchId && (
               <p className="mt-3 text-xs font-bold text-secondary">Batch tracked: {lastChaseBatchId.slice(0, 8)}</p>
             )}
@@ -1263,23 +1369,6 @@ const GuidedWorkflows = ({
             <WorkflowList rows={missingInfoMembers.slice(0, 8)} getMeta={member => member.missing_required_fields.slice(0, 4).map(formatLabel).join(', ')} />
           </section>
         </div>
-      )}
-
-      {activeWorkflow === 'exports' && (
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          {EXPORT_PRESETS.map(preset => (
-            <button
-              key={preset.id}
-              onClick={() => onExportPreset(preset.id)}
-              disabled={exporting}
-              className="bg-surface-container-lowest rounded-xl p-5 text-left hover:bg-surface-container-high transition-colors disabled:opacity-50"
-            >
-              <FileSpreadsheet className="text-primary mb-4" size={20} />
-              <p className="text-xs font-black uppercase tracking-[0.14rem] text-on-surface">{preset.label}</p>
-              <p className="mt-2 text-[11px] font-bold text-on-surface-variant">{preset.description}</p>
-            </button>
-          ))}
-        </section>
       )}
 
       {activeWorkflow === 'graduation' && (
@@ -1351,6 +1440,7 @@ const WorkflowList = ({
 
 const ComposerField = ({
   label,
+  copyLabel,
   value,
   copied,
   multiline,
@@ -1358,6 +1448,7 @@ const ComposerField = ({
   onCopy
 }: {
   label: string;
+  copyLabel: string;
   value: string;
   copied: boolean;
   multiline?: boolean;
@@ -1373,7 +1464,7 @@ const ComposerField = ({
         className="text-[10px] font-black uppercase tracking-[0.14rem] text-primary flex items-center gap-1"
       >
         <Copy size={12} />
-        {copied ? copiedLabel : 'Copy'}
+        {copied ? copiedLabel : copyLabel}
       </button>
     </div>
     {multiline ? (
@@ -1407,7 +1498,8 @@ const RegistryTable = ({
   onToggleAll,
   onSort,
   onMarkVerified,
-  onMarkChased
+  onMarkChased,
+  onBeforeSelect
 }: {
   columns: RegistryColumn[];
   members: SecretaryMemberProfile[];
@@ -1423,6 +1515,7 @@ const RegistryTable = ({
   onSort: (column: RegistryColumn) => void;
   onMarkVerified: (member: SecretaryMemberProfile) => void;
   onMarkChased: (member: SecretaryMemberProfile) => void;
+  onBeforeSelect: () => void;
 }) => {
   const rowPadding = density === 'compact' ? 'px-4 py-3' : density === 'comfortable' ? 'px-5 py-5' : 'px-5 py-4';
 
@@ -1475,7 +1568,10 @@ const RegistryTable = ({
           {members.map(member => (
             <tr
               key={member.id}
-              onClick={() => onSelect(member)}
+              onClick={() => {
+                onBeforeSelect();
+                onSelect(member);
+              }}
               className={cn(
                 'cursor-pointer transition-colors hover:bg-surface-container-high',
                 selectedMember?.id === member.id && 'bg-primary/10'
@@ -1942,23 +2038,25 @@ function getRecipientLine(member: SecretaryMemberProfile) {
 function buildMissingInfoChaseComposer(rows: SecretaryMemberProfile[]): ChaseComposer {
   const recipientLine = rows.map(getRecipientLine).join(', ');
   const subject = 'Missing Chapter Roster Info';
-  const previewRows = rows.slice(0, 8).map(member => {
-    const fields = member.missing_required_fields.map(formatLabel).join(', ');
-    return `- ${getDisplayName(member)}: ${fields || 'No missing fields listed'}`;
-  });
-  const extraCount = Math.max(0, rows.length - previewRows.length);
+  const missingFields = [...new Set(rows.flatMap(member => member.missing_required_fields))]
+    .map(formatLabel)
+    .sort((a, b) => a.localeCompare(b));
+  const checklist = missingFields.length > 0
+    ? missingFields.map(field => `- ${field}`)
+    : ['- Any missing roster fields I flagged for your profile'];
   const body = [
     'Hey,',
     '',
-    'I am cleaning up the chapter roster and need the missing items below confirmed.',
+    'I am cleaning up the chapter roster and your profile is missing one or more required items.',
     '',
-    ...previewRows,
-    extraCount > 0 ? `- ${extraCount} additional selected records included in this chase batch.` : '',
+    'Please reply with any of the following that apply to you:',
+    ...checklist,
     '',
-    'Reply with the missing info when you can.',
+    'This is a BCC batch note, so I am not listing individual missing fields by name here.',
+    'Reply directly with your updates when you can.',
     '',
     'Thank you.'
-  ].filter(line => line !== '').join('\n');
+  ].join('\n');
 
   return { recipientLine, subject, body };
 }
