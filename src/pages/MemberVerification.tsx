@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  HousingType,
   MemberVerificationContacts,
   MemberVerificationSelfProfile,
   VerificationGateStatus,
@@ -33,6 +34,7 @@ type VerificationForm = {
   expected_graduation_term: string;
   school: string;
   major: string;
+  housing_type: '' | HousingType;
   local_address: string;
   campus_housing: string;
   home_city: string;
@@ -73,7 +75,9 @@ const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
   expected_graduation_term: 'Expected grad term',
   school: 'School',
   major: 'Major',
+  housing_type: 'Housing type',
   local_address: 'Local address',
+  campus_housing: 'Building',
   home_city: 'Home city',
   home_state: 'Home state',
   tshirt_size: 'T-shirt size',
@@ -87,6 +91,12 @@ const OPTIONAL_FIELD_LABELS: Record<VerificationOptionalReviewField, string> = {
 };
 
 const SIZE_OPTIONS = ['', 'S', 'M', 'L', 'XL', 'XXL'];
+const HOUSING_TYPE_OPTIONS: Array<{ value: '' | HousingType; label: string }> = [
+  { value: '', label: 'Select housing type' },
+  { value: 'on_campus', label: 'On Campus' },
+  { value: 'off_campus', label: 'Off-campus' },
+  { value: 'chapter_housing', label: 'Chapter Housing' }
+];
 
 export const MemberVerification = () => {
   const { member, verificationStatus, refreshProfile, refreshVerificationStatus, signOut } = useAuth();
@@ -150,6 +160,10 @@ export const MemberVerification = () => {
   const missingFields = useMemo(
     () => form ? computeMissingRequiredFields(form) : [],
     [form]
+  );
+  const activeRequiredFields = useMemo(
+    () => form && gateStatus ? getActiveRequiredFields(form, gateStatus.required_fields) : [],
+    [form, gateStatus]
   );
 
   if (!member) {
@@ -284,10 +298,56 @@ export const MemberVerification = () => {
               <VerificationSection title="Contact">
                 <TextField required label="Personal email" value={form.personal_email} onChange={value => updateForm('personal_email', value)} />
                 <TextField required label="Phone" value={form.phone} onChange={value => updateForm('phone', value)} />
-                <TextField required label="Local address" value={form.local_address} onChange={value => updateForm('local_address', value)} />
-                <TextField label="Campus housing" value={form.campus_housing} placeholder="Dorm, chapter house, or off campus" onChange={value => updateForm('campus_housing', value)} />
                 <TextField required label="Home city" value={form.home_city} onChange={value => updateForm('home_city', value)} />
                 <TextField required label="Home state" value={form.home_state} onChange={value => updateForm('home_state', value)} />
+              </VerificationSection>
+
+              <VerificationSection title="Housing">
+                <HousingTypeField value={form.housing_type} onChange={value => updateForm('housing_type', value)} />
+                {form.housing_type === 'on_campus' && (
+                  <TextField
+                    required
+                    label="Dorm / building name"
+                    value={form.campus_housing}
+                    placeholder="Haven Hall, Sadler Hall, etc."
+                    onChange={value => updateForm('campus_housing', value)}
+                  />
+                )}
+                {form.housing_type === 'off_campus' && (
+                  <>
+                    <TextField
+                      required
+                      label="Local street address"
+                      value={form.local_address}
+                      placeholder="Street address or apartment address"
+                      onChange={value => updateForm('local_address', value)}
+                    />
+                    <TextField
+                      label="Apartment / building name"
+                      value={form.campus_housing}
+                      placeholder="Optional"
+                      onChange={value => updateForm('campus_housing', value)}
+                    />
+                  </>
+                )}
+                {form.housing_type === 'chapter_housing' && (
+                  <>
+                    <TextField
+                      required
+                      label="Chapter house / building"
+                      value={form.campus_housing}
+                      placeholder="Chapter house name"
+                      onChange={value => updateForm('campus_housing', value)}
+                    />
+                    <TextField
+                      required
+                      label="Chapter house address"
+                      value={form.local_address}
+                      placeholder="Street address"
+                      onChange={value => updateForm('local_address', value)}
+                    />
+                  </>
+                )}
               </VerificationSection>
 
               <VerificationSection title="Academic">
@@ -347,12 +407,12 @@ export const MemberVerification = () => {
             <aside className="xl:sticky xl:top-8 h-fit bg-surface-container-low rounded-[2rem] p-6">
               <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-secondary">Completion</p>
               <div className="mt-5 flex items-end gap-2">
-                <span className="text-5xl font-black">{gateStatus.required_fields.length - missingFields.length}</span>
-                <span className="pb-2 text-on-surface-variant font-black">/ {gateStatus.required_fields.length}</span>
+                <span className="text-5xl font-black">{activeRequiredFields.length - missingFields.length}</span>
+                <span className="pb-2 text-on-surface-variant font-black">/ {activeRequiredFields.length}</span>
               </div>
 
               <div className="mt-6 space-y-2">
-                {gateStatus.required_fields.map(field => (
+                {activeRequiredFields.map(field => (
                   <div key={field} className="flex items-center justify-between gap-3 text-sm font-bold">
                     <span>{REQUIRED_FIELD_LABELS[field]}</span>
                     {missingFields.includes(field) ? (
@@ -469,6 +529,29 @@ const SelectField = ({
   </label>
 );
 
+const HousingTypeField = ({
+  value,
+  onChange
+}: {
+  value: '' | HousingType;
+  onChange: (value: '' | HousingType) => void;
+}) => (
+  <label className="block">
+    <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
+      Housing type<span className="text-primary"> *</span>
+    </span>
+    <select
+      value={value}
+      onChange={event => onChange(event.target.value as '' | HousingType)}
+      className="mt-2 w-full min-h-12 rounded-2xl bg-surface-container-lowest px-4 py-3 text-on-surface font-bold outline-none focus:ring-2 focus:ring-primary/70 cursor-pointer"
+    >
+      {HOUSING_TYPE_OPTIONS.map(option => (
+        <option key={option.value || 'blank'} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  </label>
+);
+
 const ConsentField = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
   <CheckboxField
     label="Consent for newsletters and emergency outreach"
@@ -532,6 +615,7 @@ function toForm(profile: MemberVerificationSelfProfile, contacts: MemberVerifica
     expected_graduation_term: profile.expected_graduation_term ?? '',
     school: profile.school ?? profile.college ?? '',
     major: profile.major ?? '',
+    housing_type: profile.housing_type ?? '',
     local_address: profile.local_address ?? '',
     campus_housing: profile.campus_housing ?? '',
     home_city: profile.home_city ?? '',
@@ -575,6 +659,7 @@ function toProfileUpdate(form: VerificationForm) {
     expected_graduation_term: clean(form.expected_graduation_term),
     school: clean(form.school),
     major: clean(form.major),
+    housing_type: form.housing_type || null,
     local_address: clean(form.local_address),
     campus_housing: clean(form.campus_housing),
     home_city: clean(form.home_city),
@@ -592,10 +677,24 @@ function computeMissingRequiredFields(form: VerificationForm): VerificationRequi
   const missing: VerificationRequiredField[] = [];
 
   for (const field of Object.keys(REQUIRED_FIELD_LABELS) as VerificationRequiredField[]) {
+    if (field === 'local_address' || field === 'campus_housing') continue;
     const value = form[field as keyof VerificationForm];
     if (typeof value === 'string' && value.trim() === '') {
       missing.push(field);
     }
+  }
+
+  if (form.housing_type === 'on_campus' && form.campus_housing.trim() === '') {
+    missing.push('campus_housing');
+  }
+
+  if (form.housing_type === 'off_campus' && form.local_address.trim() === '') {
+    missing.push('local_address');
+  }
+
+  if (form.housing_type === 'chapter_housing') {
+    if (form.campus_housing.trim() === '') missing.push('campus_housing');
+    if (form.local_address.trim() === '') missing.push('local_address');
   }
 
   if (form.graduation_year && Number.isNaN(Number(form.graduation_year))) {
@@ -603,6 +702,24 @@ function computeMissingRequiredFields(form: VerificationForm): VerificationRequi
   }
 
   return [...new Set(missing)];
+}
+
+function getActiveRequiredFields(form: VerificationForm, baseFields: VerificationRequiredField[]) {
+  const fields: VerificationRequiredField[] = baseFields.filter(field => field !== 'local_address' && field !== 'campus_housing');
+
+  if (form.housing_type === 'on_campus') {
+    fields.push('campus_housing');
+  }
+
+  if (form.housing_type === 'off_campus') {
+    fields.push('local_address');
+  }
+
+  if (form.housing_type === 'chapter_housing') {
+    fields.push('campus_housing', 'local_address');
+  }
+
+  return [...new Set(fields)];
 }
 
 function computeOptionalReviewFlags(form: VerificationForm): VerificationOptionalReviewField[] {

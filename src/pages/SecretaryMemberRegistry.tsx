@@ -71,6 +71,7 @@ type ColumnKey =
   | 'initiation_date'
   | 'school'
   | 'major'
+  | 'housing_type'
   | 'local_address'
   | 'campus_housing'
   | 'home'
@@ -2034,8 +2035,9 @@ const RegistryDrawer = ({
         <DetailRow label="Phone" value={member.phone} icon={<Phone size={14} />} />
         <DetailRow label="School email" value={member.google_email} icon={<Mail size={14} />} />
         <DetailRow label="Personal email" value={member.personal_email} icon={<Mail size={14} />} />
+        <DetailRow label="Housing type" value={formatHousingType(member.housing_type)} />
         <DetailRow label="Local address" value={member.local_address} />
-        <DetailRow label="Campus housing" value={member.campus_housing} />
+        <DetailRow label="Building / housing" value={member.campus_housing} />
         <DetailRow label="Home" value={[member.home_city, member.home_state].filter(Boolean).join(', ')} />
         <DetailRow label="T-Shirt" value={member.tshirt_size} />
         <DetailRow label="Hoodie" value={member.hoodie_size} />
@@ -2125,8 +2127,9 @@ const REGISTRY_COLUMNS: RegistryColumn[] = [
   column('initiation_date', 'Initiation', 'Academic', 150, member => formatDate(member.initiation_date) ?? 'Missing', member => formatDate(member.initiation_date) ?? '', member => member.initiation_date),
   column('school', 'School', 'Academic', 190, member => member.school ?? 'Missing', member => member.school ?? '', member => member.school),
   column('major', 'Major', 'Academic', 190, member => member.major ?? 'Missing', member => member.major ?? '', member => member.major),
+  column('housing_type', 'Housing Type', 'Housing', 150, member => formatHousingType(member.housing_type), member => formatHousingType(member.housing_type), member => member.housing_type),
   column('local_address', 'Local Address', 'Housing', 240, member => member.local_address ?? 'Missing', member => member.local_address ?? '', member => member.local_address),
-  column('campus_housing', 'Campus Housing', 'Housing', 170, member => member.campus_housing ?? 'Missing', member => member.campus_housing ?? '', member => member.campus_housing),
+  column('campus_housing', 'Building / Housing', 'Housing', 170, member => member.campus_housing ?? 'Missing', member => member.campus_housing ?? '', member => member.campus_housing),
   column('home', 'Home', 'Housing', 160, member => [member.home_city, member.home_state].filter(Boolean).join(', ') || 'Missing', member => [member.home_city, member.home_state].filter(Boolean).join(', '), member => `${member.home_state ?? ''} ${member.home_city ?? ''}`),
   column('instagram', 'Instagram', 'Social', 150, member => member.instagram ?? 'Missing', member => member.instagram ?? '', member => member.instagram),
   column('snapchat', 'Snapchat', 'Social', 150, member => member.snapchat ?? 'Missing', member => member.snapchat ?? '', member => member.snapchat),
@@ -2301,6 +2304,14 @@ function getLegalName(member: SecretaryMemberProfile) {
 
 function formatLabel(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatHousingType(value?: string | null) {
+  if (!value) return 'Missing';
+  if (value === 'on_campus') return 'On Campus';
+  if (value === 'off_campus') return 'Off-campus';
+  if (value === 'chapter_housing') return 'Chapter Housing';
+  return formatLabel(value);
 }
 
 function formatDate(value?: string | null) {

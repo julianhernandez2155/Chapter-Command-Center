@@ -21,6 +21,7 @@ export interface SecretaryMemberProfile {
   major: string | null;
   birthday_month: number | null;
   birthday_day: number | null;
+  housing_type: string | null;
   local_address: string | null;
   campus_housing: string | null;
   home_city: string | null;
@@ -71,6 +72,7 @@ export type SecretaryMemberProfileUpdate = Partial<Pick<
   | 'linkedin'
   | 'tshirt_size'
   | 'hoodie_size'
+  | 'housing_type'
   | 'local_address'
   | 'campus_housing'
   | 'home_city'
@@ -118,6 +120,7 @@ const SECRETARY_PROFILE_SELECT = `
   major,
   birthday_month,
   birthday_day,
+  housing_type,
   local_address,
   campus_housing,
   home_city,

@@ -17,11 +17,16 @@ export const VERIFICATION_REQUIRED_FIELDS = [
   'expected_graduation_term',
   'school',
   'major',
-  'local_address',
+  'housing_type',
   'home_city',
   'home_state',
   'tshirt_size',
   'hoodie_size'
+] as const;
+
+export const VERIFICATION_CONDITIONAL_REQUIRED_FIELDS = [
+  'local_address',
+  'campus_housing'
 ] as const;
 
 export const VERIFICATION_OPTIONAL_REVIEW_FIELDS = [
@@ -30,8 +35,11 @@ export const VERIFICATION_OPTIONAL_REVIEW_FIELDS = [
   'parent_outreach_consent'
 ] as const;
 
-export type VerificationRequiredField = typeof VERIFICATION_REQUIRED_FIELDS[number];
+export type VerificationRequiredField =
+  | typeof VERIFICATION_REQUIRED_FIELDS[number]
+  | typeof VERIFICATION_CONDITIONAL_REQUIRED_FIELDS[number];
 export type VerificationOptionalReviewField = typeof VERIFICATION_OPTIONAL_REVIEW_FIELDS[number];
+export type HousingType = 'on_campus' | 'off_campus' | 'chapter_housing';
 
 export interface VerificationCycle {
   id: string;
@@ -112,6 +120,7 @@ export interface MemberVerificationSelfProfile {
   school: string | null;
   college: string | null;
   major: string | null;
+  housing_type: HousingType | null;
   local_address: string | null;
   campus_housing: string | null;
   home_city: string | null;
@@ -169,6 +178,7 @@ export type MemberVerificationProfileUpdate = Partial<Pick<
   | 'expected_graduation_term'
   | 'school'
   | 'major'
+  | 'housing_type'
   | 'local_address'
   | 'campus_housing'
   | 'home_city'
@@ -279,6 +289,7 @@ const SELF_PROFILE_SELECT = `
   school,
   college,
   major,
+  housing_type,
   local_address,
   campus_housing,
   home_city,
