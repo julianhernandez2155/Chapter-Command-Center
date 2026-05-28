@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Permission, getPermissionsForPositions, hasAnyPermission, hasPermission } from '../lib/permissions';
@@ -77,6 +77,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [roles, setRoles] = useState<string[]>([]);
   const [positions, setPositions] = useState<LivePosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
+  const memberRef = useRef<MemberProfile | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    memberRef.current = member;
+  }, [member]);
 
   const resetProfileState = () => {
     setMember(null);
@@ -170,7 +180,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setLoading(true);
+        if (event === 'INITIAL_SESSION') {
+          return;
+        }
+
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          setUser(session.user);
+          return;
+        }
+
+        const alreadyLoadedForUser = Boolean(
+          session?.user
+          && userRef.current?.id === session.user.id
+          && memberRef.current
+        );
+
+        if (!alreadyLoadedForUser) {
+          setLoading(true);
+        }
+
         if (session?.user) {
           setUser(session.user);
           try {
@@ -186,7 +214,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
           resetProfileState();
         }
-        setLoading(false);
+
+        if (!alreadyLoadedForUser) {
+          setLoading(false);
+        }
       }
     );
 
