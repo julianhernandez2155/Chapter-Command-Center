@@ -12,16 +12,18 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  MemberVerificationContacts,
   MemberVerificationSelfProfile,
   VerificationGateStatus,
   VerificationOptionalReviewField,
   VerificationRequiredField,
+  fetchMyVerificationContacts,
   fetchMyVerificationGateStatus,
   fetchMyVerificationSelfProfile,
+  saveMyVerificationContacts,
   saveMyVerificationSubmission,
   updateMyVerificationProfile
 } from '../lib/memberVerification';
-import { cn } from '../lib/utils';
 
 type VerificationForm = {
   preferred_name: string;
@@ -40,7 +42,27 @@ type VerificationForm = {
   linkedin: string;
   tshirt_size: string;
   hoodie_size: string;
-  parent_outreach_consent: boolean;
+  guardian_1_id: string | null;
+  guardian_1_first_name: string;
+  guardian_1_last_name: string;
+  guardian_1_relationship: string;
+  guardian_1_phone: string;
+  guardian_1_email: string;
+  guardian_1_outreach_consent: boolean;
+  guardian_2_id: string | null;
+  guardian_2_first_name: string;
+  guardian_2_last_name: string;
+  guardian_2_relationship: string;
+  guardian_2_phone: string;
+  guardian_2_email: string;
+  guardian_2_outreach_consent: boolean;
+  emergency_id: string | null;
+  emergency_first_name: string;
+  emergency_last_name: string;
+  emergency_relationship: string;
+  emergency_phone: string;
+  emergency_email: string;
+  emergency_same_as_guardian: boolean;
   correction_notes: string;
 };
 
@@ -61,7 +83,7 @@ const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
 const OPTIONAL_FIELD_LABELS: Record<VerificationOptionalReviewField, string> = {
   parent_guardian_contact: 'Parent/guardian contact',
   emergency_contact: 'Emergency contact',
-  parent_outreach_consent: 'Parent outreach consent'
+  parent_outreach_consent: 'Parent contact consent'
 };
 
 const SIZE_OPTIONS = ['', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -87,23 +109,25 @@ export const MemberVerification = () => {
           fetchMyVerificationGateStatus(),
           fetchMyVerificationSelfProfile()
         ]);
+        const contacts = selfProfile ? await fetchMyVerificationContacts(selfProfile.id) : emptyVerificationContacts();
+        const nextForm = selfProfile ? toForm(selfProfile, contacts) : null;
 
         if (!isMounted) return;
         setGateStatus(freshGate);
         setProfile(selfProfile);
-        setForm(selfProfile ? toForm(selfProfile) : null);
+        setForm(nextForm);
 
-        if (freshGate?.is_gate_required && selfProfile) {
+        if (freshGate?.is_gate_required && selfProfile && nextForm) {
           await saveMyVerificationSubmission({
             cycleId: freshGate.cycle_id,
             memberId: freshGate.member_id,
             status: 'in_progress',
-            missingRequiredFields: computeMissingRequiredFields(toForm(selfProfile)),
-            optionalReviewFlags: computeOptionalReviewFlags(selfProfile),
+            missingRequiredFields: computeMissingRequiredFields(nextForm),
+            optionalReviewFlags: computeOptionalReviewFlags(nextForm),
             changedFields: [],
             confirmedFields: [],
             correctionNotes: null,
-            snapshot: buildSnapshot(toForm(selfProfile), selfProfile)
+            snapshot: buildSnapshot(nextForm, selfProfile)
           });
           await refreshVerificationStatus();
         }
@@ -148,12 +172,13 @@ export const MemberVerification = () => {
     setError(null);
     try {
       await updateMyVerificationProfile(profile.id, toProfileUpdate(form));
+      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form), toEmergencyContactInput(form));
       await saveMyVerificationSubmission({
         cycleId: gateStatus.cycle_id,
         memberId: gateStatus.member_id,
         status: 'in_progress',
         missingRequiredFields: computeMissingRequiredFields(form),
-        optionalReviewFlags: computeOptionalReviewFlags({ ...profile, parent_outreach_consent: form.parent_outreach_consent }),
+        optionalReviewFlags: computeOptionalReviewFlags(form),
         changedFields: getChangedFields(profile, form),
         confirmedFields: getConfirmedFields(form),
         correctionNotes: form.correction_notes || null,
@@ -183,12 +208,13 @@ export const MemberVerification = () => {
     setError(null);
     try {
       await updateMyVerificationProfile(profile.id, toProfileUpdate(form));
+      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form), toEmergencyContactInput(form));
       await saveMyVerificationSubmission({
         cycleId: gateStatus.cycle_id,
         memberId: gateStatus.member_id,
         status: 'submitted',
         missingRequiredFields: [],
-        optionalReviewFlags: computeOptionalReviewFlags({ ...profile, parent_outreach_consent: form.parent_outreach_consent }),
+        optionalReviewFlags: computeOptionalReviewFlags(form),
         changedFields: getChangedFields(profile, form),
         confirmedFields: getConfirmedFields(form),
         correctionNotes: form.correction_notes || null,
@@ -279,10 +305,33 @@ export const MemberVerification = () => {
                 <TextField label="LinkedIn" value={form.linkedin} onChange={value => updateForm('linkedin', value)} />
               </VerificationSection>
 
-              <VerificationSection title="Optional Review">
-                <StatusField label="Parent/guardian contact" complete={profile.has_parent_guardian_contact} />
-                <StatusField label="Emergency contact" complete={profile.has_emergency_contact} />
-                <ToggleField label="Parent outreach consent" checked={form.parent_outreach_consent} onChange={value => updateForm('parent_outreach_consent', value)} />
+              <VerificationSection title="Parent / Emergency Contact">
+                <ContactGroup title="Parent / Guardian 1">
+                  <TextField label="First name" value={form.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
+                  <TextField label="Last name" value={form.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
+                  <TextField label="Phone" value={form.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
+                  <TextField label="Email" value={form.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
+                  <TextField label="Relationship" value={form.guardian_1_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_1_relationship', value)} />
+                  <ConsentField checked={form.guardian_1_outreach_consent} onChange={value => updateForm('guardian_1_outreach_consent', value)} />
+                </ContactGroup>
+
+                <ContactGroup title="Parent / Guardian 2">
+                  <TextField label="First name" value={form.guardian_2_first_name} onChange={value => updateForm('guardian_2_first_name', value)} />
+                  <TextField label="Last name" value={form.guardian_2_last_name} onChange={value => updateForm('guardian_2_last_name', value)} />
+                  <TextField label="Phone" value={form.guardian_2_phone} onChange={value => updateForm('guardian_2_phone', value)} />
+                  <TextField label="Email" value={form.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
+                  <TextField label="Relationship" value={form.guardian_2_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_2_relationship', value)} />
+                  <ConsentField checked={form.guardian_2_outreach_consent} onChange={value => updateForm('guardian_2_outreach_consent', value)} />
+                </ContactGroup>
+
+                <ContactGroup title="Emergency Contact">
+                  <TextField label="First name" value={form.emergency_first_name} onChange={value => updateForm('emergency_first_name', value)} />
+                  <TextField label="Last name" value={form.emergency_last_name} onChange={value => updateForm('emergency_last_name', value)} />
+                  <TextField label="Relationship" value={form.emergency_relationship} onChange={value => updateForm('emergency_relationship', value)} />
+                  <TextField label="Phone" value={form.emergency_phone} onChange={value => updateForm('emergency_phone', value)} />
+                  <TextField label="Email" value={form.emergency_email} onChange={value => updateForm('emergency_email', value)} />
+                  <CheckboxField label="Same as parent/guardian" checked={form.emergency_same_as_guardian} onChange={value => updateForm('emergency_same_as_guardian', value)} />
+                </ContactGroup>
               </VerificationSection>
 
               <VerificationSection title="Secretary Review">
@@ -355,6 +404,13 @@ const VerificationSection = ({ title, children }: { title: string; children: Rea
   </section>
 );
 
+const ContactGroup = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+    <h3 className="md:col-span-2 text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface">{title}</h3>
+    {children}
+  </div>
+);
+
 const TextField = ({
   label,
   value,
@@ -413,6 +469,26 @@ const SelectField = ({
   </label>
 );
 
+const ConsentField = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+  <CheckboxField
+    label="Consent for newsletters and emergency outreach"
+    checked={checked}
+    onChange={onChange}
+  />
+);
+
+const CheckboxField = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) => (
+  <label className="rounded-2xl bg-surface-container-low px-4 py-3 min-h-12 flex items-center justify-between gap-4 cursor-pointer">
+    <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</span>
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={event => onChange(event.target.checked)}
+      className="h-5 w-5 accent-primary cursor-pointer"
+    />
+  </label>
+);
+
 const TextAreaField = ({
   label,
   value,
@@ -443,31 +519,11 @@ const ReadonlyField = ({ label, value }: { label: string; value: string | null }
   </div>
 );
 
-const StatusField = ({ label, complete }: { label: string; complete: boolean }) => (
-  <div className="rounded-2xl bg-surface-container-lowest px-4 py-3 min-h-12">
-    <p className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</p>
-    <p className={cn('mt-1 font-black', complete ? 'text-secondary' : 'text-on-surface')}>
-      {complete ? 'On file' : 'Not on file'}
-    </p>
-  </div>
-);
+function toForm(profile: MemberVerificationSelfProfile, contacts: MemberVerificationContacts): VerificationForm {
+  const guardianOne = contacts.guardians.find(contact => contact.contact_order === 1);
+  const guardianTwo = contacts.guardians.find(contact => contact.contact_order === 2);
+  const emergency = contacts.emergencyContact;
 
-const ToggleField = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) => (
-  <label className="rounded-2xl bg-surface-container-lowest px-4 py-3 min-h-12 flex items-center justify-between gap-4 cursor-pointer">
-    <span>
-      <span className="block text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</span>
-      <span className={cn('mt-1 block font-black', checked ? 'text-secondary' : 'text-on-surface')}>{checked ? 'Consent yes' : 'Consent no'}</span>
-    </span>
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={event => onChange(event.target.checked)}
-      className="h-5 w-5 accent-primary cursor-pointer"
-    />
-  </label>
-);
-
-function toForm(profile: MemberVerificationSelfProfile): VerificationForm {
   return {
     preferred_name: profile.preferred_name ?? '',
     personal_email: profile.personal_email ?? '',
@@ -485,7 +541,27 @@ function toForm(profile: MemberVerificationSelfProfile): VerificationForm {
     linkedin: profile.linkedin ?? '',
     tshirt_size: profile.tshirt_size ?? '',
     hoodie_size: profile.hoodie_size ?? '',
-    parent_outreach_consent: profile.parent_outreach_consent,
+    guardian_1_id: guardianOne?.id ?? null,
+    guardian_1_first_name: guardianOne?.first_name ?? firstNameFallback(guardianOne?.contact_name),
+    guardian_1_last_name: guardianOne?.last_name ?? lastNameFallback(guardianOne?.contact_name),
+    guardian_1_relationship: guardianOne?.relationship ?? '',
+    guardian_1_phone: guardianOne?.phone ?? '',
+    guardian_1_email: guardianOne?.email ?? '',
+    guardian_1_outreach_consent: guardianOne?.outreach_consent ?? false,
+    guardian_2_id: guardianTwo?.id ?? null,
+    guardian_2_first_name: guardianTwo?.first_name ?? firstNameFallback(guardianTwo?.contact_name),
+    guardian_2_last_name: guardianTwo?.last_name ?? lastNameFallback(guardianTwo?.contact_name),
+    guardian_2_relationship: guardianTwo?.relationship ?? '',
+    guardian_2_phone: guardianTwo?.phone ?? '',
+    guardian_2_email: guardianTwo?.email ?? '',
+    guardian_2_outreach_consent: guardianTwo?.outreach_consent ?? false,
+    emergency_id: emergency?.id ?? null,
+    emergency_first_name: emergency?.first_name ?? firstNameFallback(emergency?.contact_name),
+    emergency_last_name: emergency?.last_name ?? lastNameFallback(emergency?.contact_name),
+    emergency_relationship: emergency?.relationship ?? '',
+    emergency_phone: emergency?.phone ?? '',
+    emergency_email: emergency?.email ?? '',
+    emergency_same_as_guardian: emergency?.same_as_guardian ?? false,
     correction_notes: ''
   };
 }
@@ -508,7 +584,7 @@ function toProfileUpdate(form: VerificationForm) {
     linkedin: clean(form.linkedin),
     tshirt_size: clean(form.tshirt_size),
     hoodie_size: clean(form.hoodie_size),
-    parent_outreach_consent: form.parent_outreach_consent
+    parent_outreach_consent: hasParentOutreachConsent(form)
   };
 }
 
@@ -529,22 +605,22 @@ function computeMissingRequiredFields(form: VerificationForm): VerificationRequi
   return [...new Set(missing)];
 }
 
-function computeOptionalReviewFlags(profile: Pick<MemberVerificationSelfProfile, 'has_parent_guardian_contact' | 'has_emergency_contact' | 'parent_outreach_consent'>): VerificationOptionalReviewField[] {
+function computeOptionalReviewFlags(form: VerificationForm): VerificationOptionalReviewField[] {
   return [
-    !profile.has_parent_guardian_contact ? 'parent_guardian_contact' : null,
-    !profile.has_emergency_contact ? 'emergency_contact' : null,
-    !profile.parent_outreach_consent ? 'parent_outreach_consent' : null
+    !hasParentGuardianContact(form) ? 'parent_guardian_contact' : null,
+    !hasEmergencyContact(form) ? 'emergency_contact' : null,
+    !hasParentOutreachConsent(form) ? 'parent_outreach_consent' : null
   ].filter(Boolean) as VerificationOptionalReviewField[];
 }
 
 function getChangedFields(profile: MemberVerificationSelfProfile, form: VerificationForm) {
-  const initial = toForm(profile);
+  const initial = toForm(profile, emptyVerificationContacts());
   return (Object.keys(form) as Array<keyof VerificationForm>).filter(key => key !== 'correction_notes' && form[key] !== initial[key]);
 }
 
 function getConfirmedFields(form: VerificationForm) {
   return (Object.keys(form) as Array<keyof VerificationForm>)
-    .filter(key => key !== 'correction_notes' && String(form[key]).trim() !== '')
+    .filter(key => key !== 'correction_notes' && form[key] !== false && form[key] !== null && String(form[key]).trim() !== '')
     .map(String);
 }
 
@@ -554,12 +630,94 @@ function buildSnapshot(form: VerificationForm, profile: MemberVerificationSelfPr
     legal_name: `${profile.legal_first_name} ${profile.legal_last_name}`,
     google_email: profile.google_email,
     ...toProfileUpdate(form),
+    parent_guardian_contacts: toGuardianContactInputs(form),
+    emergency_contact: toEmergencyContactInput(form),
     optional_status: {
-      has_parent_guardian_contact: profile.has_parent_guardian_contact,
-      has_emergency_contact: profile.has_emergency_contact,
-      parent_outreach_consent: form.parent_outreach_consent
+      has_parent_guardian_contact: hasParentGuardianContact(form),
+      has_emergency_contact: hasEmergencyContact(form),
+      parent_outreach_consent: hasParentOutreachConsent(form)
     }
   };
+}
+
+function toGuardianContactInputs(form: VerificationForm) {
+  return [
+    {
+      id: form.guardian_1_id,
+      contactOrder: 1 as const,
+      firstName: form.guardian_1_first_name,
+      lastName: form.guardian_1_last_name,
+      relationship: form.guardian_1_relationship,
+      phone: form.guardian_1_phone,
+      email: form.guardian_1_email,
+      outreachConsent: form.guardian_1_outreach_consent
+    },
+    {
+      id: form.guardian_2_id,
+      contactOrder: 2 as const,
+      firstName: form.guardian_2_first_name,
+      lastName: form.guardian_2_last_name,
+      relationship: form.guardian_2_relationship,
+      phone: form.guardian_2_phone,
+      email: form.guardian_2_email,
+      outreachConsent: form.guardian_2_outreach_consent
+    }
+  ];
+}
+
+function toEmergencyContactInput(form: VerificationForm) {
+  return {
+    id: form.emergency_id,
+    firstName: form.emergency_first_name,
+    lastName: form.emergency_last_name,
+    relationship: form.emergency_relationship,
+    phone: form.emergency_phone,
+    email: form.emergency_email,
+    sameAsGuardian: form.emergency_same_as_guardian
+  };
+}
+
+function hasParentGuardianContact(form: VerificationForm) {
+  return [
+    form.guardian_1_first_name,
+    form.guardian_1_last_name,
+    form.guardian_1_phone,
+    form.guardian_1_email,
+    form.guardian_2_first_name,
+    form.guardian_2_last_name,
+    form.guardian_2_phone,
+    form.guardian_2_email
+  ].some(value => value.trim().length > 0);
+}
+
+function hasEmergencyContact(form: VerificationForm) {
+  return [
+    form.emergency_first_name,
+    form.emergency_last_name,
+    form.emergency_relationship,
+    form.emergency_phone,
+    form.emergency_email
+  ].some(value => value.trim().length > 0);
+}
+
+function hasParentOutreachConsent(form: VerificationForm) {
+  return form.guardian_1_outreach_consent || form.guardian_2_outreach_consent;
+}
+
+function emptyVerificationContacts(): MemberVerificationContacts {
+  return {
+    guardians: [],
+    emergencyContact: null
+  };
+}
+
+function firstNameFallback(contactName?: string | null) {
+  return contactName?.split(/\s+/)[0] ?? '';
+}
+
+function lastNameFallback(contactName?: string | null) {
+  if (!contactName) return '';
+  return contactName.split(/\s+/).slice(1).join(' ');
 }
 
 function clean(value: string) {

@@ -129,6 +129,37 @@ export interface MemberVerificationSelfProfile {
   updated_at: string;
 }
 
+export interface MemberVerificationGuardianContact {
+  id: string;
+  member_id: string;
+  contact_order: 1 | 2;
+  first_name: string | null;
+  last_name: string | null;
+  contact_name: string;
+  relationship: string | null;
+  phone: string | null;
+  email: string | null;
+  outreach_consent: boolean;
+}
+
+export interface MemberVerificationEmergencyContact {
+  id: string;
+  member_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  contact_name: string;
+  relationship: string | null;
+  phone: string | null;
+  email: string | null;
+  is_primary: boolean;
+  same_as_guardian: boolean;
+}
+
+export interface MemberVerificationContacts {
+  guardians: MemberVerificationGuardianContact[];
+  emergencyContact: MemberVerificationEmergencyContact | null;
+}
+
 export type MemberVerificationProfileUpdate = Partial<Pick<
   MemberVerificationSelfProfile,
   | 'preferred_name'
@@ -169,6 +200,27 @@ export interface SaveVerificationSubmissionInput {
   confirmedFields: string[];
   correctionNotes?: string | null;
   snapshot: Record<string, unknown>;
+}
+
+export interface GuardianContactInput {
+  id?: string | null;
+  contactOrder: 1 | 2;
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  phone: string;
+  email: string;
+  outreachConsent: boolean;
+}
+
+export interface EmergencyContactInput {
+  id?: string | null;
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  phone: string;
+  email: string;
+  sameAsGuardian: boolean;
 }
 
 const CYCLE_SELECT = `
@@ -244,6 +296,32 @@ const SELF_PROFILE_SELECT = `
   updated_at
 `;
 
+const GUARDIAN_CONTACT_SELECT = `
+  id,
+  member_id,
+  contact_order,
+  first_name,
+  last_name,
+  contact_name,
+  relationship,
+  phone,
+  email,
+  outreach_consent
+`;
+
+const EMERGENCY_CONTACT_SELECT = `
+  id,
+  member_id,
+  first_name,
+  last_name,
+  contact_name,
+  relationship,
+  phone,
+  email,
+  is_primary,
+  same_as_guardian
+`;
+
 export const fetchMyVerificationGateStatus = async (): Promise<VerificationGateStatus | null> => {
   const { data, error } = await supabase
     .from('member_verification_gate_status')
@@ -268,6 +346,37 @@ export const fetchMyVerificationSelfProfile = async (): Promise<MemberVerificati
   }
 
   return (data ?? null) as MemberVerificationSelfProfile | null;
+};
+
+export const fetchMyVerificationContacts = async (memberId: string): Promise<MemberVerificationContacts> => {
+  const [guardiansResult, emergencyResult] = await Promise.all([
+    supabase
+      .from('member_guardian_contacts')
+      .select(GUARDIAN_CONTACT_SELECT)
+      .eq('member_id', memberId)
+      .order('contact_order', { ascending: true }),
+    supabase
+      .from('emergency_contacts')
+      .select(EMERGENCY_CONTACT_SELECT)
+      .eq('member_id', memberId)
+      .order('is_primary', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+  ]);
+
+  if (guardiansResult.error) {
+    throw guardiansResult.error;
+  }
+
+  if (emergencyResult.error) {
+    throw emergencyResult.error;
+  }
+
+  return {
+    guardians: (guardiansResult.data ?? []) as MemberVerificationGuardianContact[],
+    emergencyContact: (emergencyResult.data ?? null) as MemberVerificationEmergencyContact | null
+  };
 };
 
 export const fetchActiveVerificationCycle = async (): Promise<VerificationCycle | null> => {
@@ -371,6 +480,125 @@ export const updateMyVerificationProfile = async (
   }
 };
 
+export const saveMyVerificationContacts = async (
+  memberId: string,
+  guardians: GuardianContactInput[],
+  emergencyContact: EmergencyContactInput
+) => {
+  for (const guardian of guardians) {
+    const hasValue = hasAnyValue([
+      guardian.firstName,
+      guardian.lastName,
+      guardian.relationship,
+      guardian.phone,
+      guardian.email
+    ]);
+
+    if (!hasValue) {
+      if (guardian.id) {
+        const { error } = await supabase
+          .from('member_guardian_contacts')
+          .delete()
+          .eq('id', guardian.id)
+          .eq('member_id', memberId);
+
+        if (error) {
+          throw error;
+        }
+      }
+      continue;
+    }
+
+    const payload = {
+      member_id: memberId,
+      contact_order: guardian.contactOrder,
+      first_name: cleanOptional(guardian.firstName),
+      last_name: cleanOptional(guardian.lastName),
+      contact_name: buildContactName(guardian.firstName, guardian.lastName, `Parent/Guardian ${guardian.contactOrder}`),
+      relationship: cleanOptional(guardian.relationship),
+      phone: cleanOptional(guardian.phone),
+      email: cleanOptional(guardian.email),
+      outreach_consent: guardian.outreachConsent
+    };
+
+    const { error } = await supabase
+      .from('member_guardian_contacts')
+      .upsert(payload, { onConflict: 'member_id,contact_order' });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  const hasEmergencyValue = hasAnyValue([
+    emergencyContact.firstName,
+    emergencyContact.lastName,
+    emergencyContact.relationship,
+    emergencyContact.phone,
+    emergencyContact.email
+  ]);
+
+  if (!hasEmergencyValue) {
+    if (emergencyContact.id) {
+      const { error } = await supabase
+        .from('emergency_contacts')
+        .delete()
+        .eq('id', emergencyContact.id)
+        .eq('member_id', memberId);
+
+      if (error) {
+        throw error;
+      }
+    }
+  } else if (emergencyContact.id) {
+    const { error } = await supabase
+      .from('emergency_contacts')
+      .update({
+        first_name: cleanOptional(emergencyContact.firstName),
+        last_name: cleanOptional(emergencyContact.lastName),
+        contact_name: buildContactName(emergencyContact.firstName, emergencyContact.lastName, 'Emergency Contact'),
+        relationship: cleanOptional(emergencyContact.relationship),
+        phone: cleanOptional(emergencyContact.phone),
+        email: cleanOptional(emergencyContact.email),
+        same_as_guardian: emergencyContact.sameAsGuardian,
+        is_primary: true
+      })
+      .eq('id', emergencyContact.id)
+      .eq('member_id', memberId);
+
+    if (error) {
+      throw error;
+    }
+  } else {
+    const { error } = await supabase
+      .from('emergency_contacts')
+      .insert({
+        member_id: memberId,
+        first_name: cleanOptional(emergencyContact.firstName),
+        last_name: cleanOptional(emergencyContact.lastName),
+        contact_name: buildContactName(emergencyContact.firstName, emergencyContact.lastName, 'Emergency Contact'),
+        relationship: cleanOptional(emergencyContact.relationship),
+        phone: cleanOptional(emergencyContact.phone),
+        email: cleanOptional(emergencyContact.email),
+        same_as_guardian: emergencyContact.sameAsGuardian,
+        is_primary: true
+      });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  const { error: memberError } = await supabase
+    .from('members')
+    .update({ parent_outreach_consent: guardians.some(guardian => guardian.outreachConsent) })
+    .eq('id', memberId);
+
+  if (memberError) {
+    throw memberError;
+  }
+};
+
 export const saveMyVerificationSubmission = async ({
   cycleId,
   memberId,
@@ -399,6 +627,18 @@ export const saveMyVerificationSubmission = async ({
   if (error) {
     throw error;
   }
+};
+
+const cleanOptional = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const hasAnyValue = (values: string[]) => values.some(value => value.trim().length > 0);
+
+const buildContactName = (firstName: string, lastName: string, fallback: string) => {
+  const name = [firstName, lastName].map(value => value.trim()).filter(Boolean).join(' ');
+  return name || fallback;
 };
 
 export const approveVerificationSubmission = async (submissionId: string, approvedBy: string) => {
