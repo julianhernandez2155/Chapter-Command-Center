@@ -16,6 +16,7 @@ Relevant files:
 
 - `.planning/FEATURE-BUILD-ORDER.md` — original dependency-ordered feature list.
 - `.planning/MEMBER_ROSTER_SCOPE.md` — current roster scope, private data boundary, and deferred secretary/admin roster direction.
+- `.planning/SECRETARY_ROSTER_SCOPE.md` — planned Secretary/Admin registry scope, fields, saved views, exports, edit guardrails, and privacy boundary.
 - `.planning/ROADMAP.md` — original seven-phase roadmap.
 - `.planning/PRE-16-HARDENING-V2-ALIGNMENT-PLAN.md` — prior hardening plan for the older full-stack workspace.
 - `docs/AUTHORIZATION_MODEL.md` — current authorization decision.
@@ -99,6 +100,7 @@ Parallel support slice:
 
 - Member roster polish is allowed while Sprint 4 is active because attendance, excusals, and officer workflows depend on trustworthy member identity.
 - The roster slice is scoped by `.planning/MEMBER_ROSTER_SCOPE.md`.
+- Future Secretary/Admin registry work is scoped by `.planning/SECRETARY_ROSTER_SCOPE.md`.
 - Keep the current roster member-facing. Do not fold compliance, dues, GPA, emergency contacts, or full secretary/admin management into the general roster.
 - Treat `member year`, `member_since_term`, and "member since" as duplicate concepts of `pledge_class`; do not surface them as separate roster fields.
 

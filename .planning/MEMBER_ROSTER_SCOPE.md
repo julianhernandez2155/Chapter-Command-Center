@@ -138,6 +138,8 @@ Do not build this yet, but preserve the future direction:
 
 Future secretary/admin reads should use a role-specific view such as `public.member_secretary_profiles`, not the general directory view.
 
+Detailed Secretary/Admin registry scope is tracked in `.planning/SECRETARY_ROSTER_SCOPE.md`.
+
 ## Explicitly Out Of Current Scope
 
 - Full database-backed permissions selector.
