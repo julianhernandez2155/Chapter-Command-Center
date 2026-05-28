@@ -3,10 +3,10 @@ import {
   AlertCircle,
   Cake,
   CalendarDays,
-  Camera,
   Copy,
   ExternalLink,
   Instagram,
+  Linkedin,
   Loader2,
   Mail,
   MessageCircle,
@@ -668,7 +668,7 @@ const MemberCard = ({ member, selected, onSelect }: { member: DirectoryMember; s
       <div className="flex gap-4 mt-auto">
         <QuickAction label="Text" href={smsHref} icon={<MessageCircle size={19} />} />
         <QuickAction label="Call" href={phoneHref} icon={<Phone size={18} />} />
-        <QuickAction label={member.instagram ? 'Instagram' : 'Snapchat'} href={socialHref} icon={member.instagram ? <Instagram size={18} /> : <Camera size={18} />} />
+        <QuickAction label={member.instagram ? 'Instagram' : 'Snapchat'} href={socialHref} icon={member.instagram ? <Instagram size={18} /> : <SnapchatIcon size={18} />} />
       </div>
     </article>
   );
@@ -753,8 +753,8 @@ const ProfileDrawer = ({
                 <ContactRow icon={<Phone size={18} />} label={member.phone} href={getPhoneHref(member.phone)} copyValue={member.phone} />
                 <ContactRow icon={<Mail size={18} />} label={member.personal_email ?? member.google_email} href={`mailto:${member.personal_email ?? member.google_email}`} copyValue={member.personal_email ?? member.google_email} />
                 <ContactRow icon={<Instagram size={18} />} label={formatHandle(member.instagram)} href={member.instagram ? `https://instagram.com/${cleanHandle(member.instagram)}` : null} copyValue={member.instagram} />
-                <ContactRow icon={<Camera size={18} />} label={formatHandle(member.snapchat)} href={member.snapchat ? `https://www.snapchat.com/add/${cleanHandle(member.snapchat)}` : null} copyValue={member.snapchat} />
-                <ContactRow icon={<ExternalLink size={18} />} label={formatLinkedIn(member.linkedin)} href={getLinkedInHref(member.linkedin)} copyValue={member.linkedin} />
+                <ContactRow icon={<SnapchatIcon size={18} />} label={formatHandle(member.snapchat)} href={member.snapchat ? `https://www.snapchat.com/add/${cleanHandle(member.snapchat)}` : null} copyValue={member.snapchat} />
+                <ContactRow icon={<Linkedin size={18} />} label={formatLinkedIn(member.linkedin)} href={getLinkedInHref(member.linkedin)} copyValue={member.linkedin} />
               </div>
             </section>
 
@@ -818,6 +818,23 @@ const Badge = ({ tone, children }: { tone: 'gold' | 'muted'; children: React.Rea
   )}>
     {children}
   </span>
+);
+
+const SnapchatIcon = ({ size = 18 }: { size?: number }) => (
+  <svg
+    aria-hidden="true"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 3.25c-2.65 0-4.2 2.05-4.2 4.75v2.15c0 .72-.64 1.15-1.72 1.5-.48.16-.5.83-.04 1.04 1.18.54 1.78.97 2.08 1.78.4 1.05 1.32 1.72 2.62 1.86.46.05.66.42 1.26.42s.8-.37 1.26-.42c1.3-.14 2.22-.81 2.62-1.86.3-.81.9-1.24 2.08-1.78.46-.21.44-.88-.04-1.04-1.08-.35-1.72-.78-1.72-1.5V8c0-2.7-1.55-4.75-4.2-4.75Z" />
+    <path d="M9.2 18.15c.7.55 1.57.85 2.8.85s2.1-.3 2.8-.85" />
+  </svg>
 );
 
 const ProfileFact = ({ label, value, muted = false }: { label: string; value: string | null | undefined; muted?: boolean }) => (
