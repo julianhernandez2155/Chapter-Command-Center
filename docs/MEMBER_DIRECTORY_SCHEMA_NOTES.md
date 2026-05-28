@@ -8,7 +8,7 @@ Migration: `supabase/migrations/20260521212211_member_directory_profile_fields.s
 
 - `school`: separate academic school/college field. Backfilled from legacy `college`.
 - `pledge_class`: initiation/new member class label, for example `Spring 2027`.
-- `member_since_term`: chapter membership start term, for example `Spring 2027`.
+- `member_since_term`: legacy/redundant chapter membership start term. Do not surface in roster UI; use `pledge_class` as the single member class/start concept.
 - `birthday_month` / `birthday_day`: birthday display without storing birth year in the general directory.
 - `avatar_url`: optional profile photo URL.
 - `bio`: optional member-editable profile biography.
@@ -31,6 +31,10 @@ Safe directory view for the frontend roster. It exposes only directory/profile f
 
 Migration: `supabase/migrations/20260521213536_restrict_directory_to_safe_view.sql`
 
+Boundary cleanup: `supabase/migrations/20260528052144_roster_directory_linkedin_boundary.sql`
+
+This cleanup intentionally exposes `linkedin` as a public profile/contact field and removes `member_since_term` from the safe view because it is redundant with `pledge_class`.
+
 General roster visibility is intentionally kept on this view instead of broadening `public.members` table access. Direct `members` table access remains limited by the existing member/officer RLS policies.
 
 ### `public.member_positions` read policy
@@ -45,3 +49,4 @@ Adds a directory-safe `SELECT` policy so authenticated members can see active/al
 - Whether birthday should remain month/day only everywhere, or whether Secretary can store full DOB privately.
 - Whether `school` should replace `college` fully in a later cleanup migration.
 - Whether LOA/transfer flags should appear to general members or remain officer-only.
+- Whether campus organizations/jobs should be a general profile drawer section or a later officer-facing profile detail.

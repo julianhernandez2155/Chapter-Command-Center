@@ -12,6 +12,7 @@ export interface DirectoryMember {
   phone: string | null;
   instagram: string | null;
   snapchat: string | null;
+  linkedin: string | null;
   status: DirectoryMemberStatus;
   graduation_year: number | null;
   school: string | null;
@@ -19,7 +20,6 @@ export interface DirectoryMember {
   major: string | null;
   avatar_url: string | null;
   pledge_class: string | null;
-  member_since_term: string | null;
   birthday_month: number | null;
   birthday_day: number | null;
   bio: string | null;
@@ -48,12 +48,12 @@ export type MemberDirectoryProfileUpdate = Partial<Pick<
   | 'phone'
   | 'instagram'
   | 'snapchat'
+  | 'linkedin'
   | 'school'
   | 'major'
   | 'graduation_year'
   | 'avatar_url'
   | 'pledge_class'
-  | 'member_since_term'
   | 'birthday_month'
   | 'birthday_day'
   | 'bio'
@@ -73,6 +73,7 @@ type MemberBaseRow = {
   phone: string | null;
   instagram: string | null;
   snapchat: string | null;
+  linkedin: string | null;
   status: DirectoryMemberStatus;
   graduation_year: number | null;
   college: string | null;
@@ -99,6 +100,7 @@ const DIRECTORY_VIEW_SELECT = `
   phone,
   instagram,
   snapchat,
+  linkedin,
   status,
   graduation_year,
   school,
@@ -106,7 +108,6 @@ const DIRECTORY_VIEW_SELECT = `
   major,
   avatar_url,
   pledge_class,
-  member_since_term,
   birthday_month,
   birthday_day,
   bio,
@@ -128,6 +129,7 @@ const MEMBER_BASE_SELECT = `
   phone,
   instagram,
   snapchat,
+  linkedin,
   status,
   graduation_year,
   college,
@@ -161,7 +163,6 @@ export const fetchMemberDirectory = async (): Promise<DirectoryMember[]> => {
     school: row.college,
     avatar_url: null,
     pledge_class: null,
-    member_since_term: null,
     birthday_month: null,
     birthday_day: null,
     bio: null,
@@ -230,6 +231,7 @@ const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember 
   phone: row.phone,
   instagram: row.instagram,
   snapchat: row.snapchat,
+  linkedin: row.linkedin,
   status: row.status,
   graduation_year: row.graduation_year,
   school: row.school ?? row.college ?? null,
@@ -237,7 +239,6 @@ const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember 
   major: row.major,
   avatar_url: row.avatar_url,
   pledge_class: row.pledge_class,
-  member_since_term: row.member_since_term,
   birthday_month: row.birthday_month,
   birthday_day: row.birthday_day,
   bio: row.bio,

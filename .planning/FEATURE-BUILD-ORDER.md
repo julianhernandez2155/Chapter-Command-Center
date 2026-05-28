@@ -94,25 +94,24 @@ Each feature is scoped to be a single prompt unit.
 
 ---
 
-## #5 — Member Registry (Secretary View)
+## #5 — Member Directory + Registry Boundary
 
-**What it is:** The canonical member roster that the Secretary manages.
+**What it is:** The chapter member directory and the boundary for future Secretary/admin roster management.
 
-**What it does:** Full table view of all members with search, filter by class year/status, inline status management (active/inactive/suspended). Secretary can edit member records and see all data fields.
+**What it does:** First, gives every authenticated member a useful chapter directory. Later, adds a separate Secretary/admin registry view for private fields, exports, and lifecycle management.
 
-**Who uses it:** Secretary (full access), President (read), other officers (limited).
+**Who uses it:** All members use the directory. Secretary/President later get the detailed registry.
 
 **Dependencies:** #2, #3, #4.
 
 **Scope:**
-- `/admin/members` — sortable/filterable table: name, SUID, graduation year, major, current positions, tier (placeholder until #12), dues status (placeholder until #10), status
-- Click row → member detail panel (slide-in Sheet component) with all fields
-- Secretary can edit: preferred name, phone, class year, major, status (active/inactive/suspended)
-- "Add member manually" for edge cases (e.g., transfer student who can't register themselves yet)
-- Search by name or SUID
-- Export to CSV button (name, SUID, positions)
+- `/roster` — member-facing directory with active/alumni tabs, search, filters, first/last name sort, pledge class grouping, birthdays, study abroad badges, member cards, and a profile drawer.
+- General profile drawer fields: preferred/legal name, school, major, class year, pledge class, birthday month/day, phone, email, Instagram, Snapchat, LinkedIn, bio, current positions, past positions, and active study abroad status.
+- Use `public.member_directory_profiles` as the general directory boundary. Do not broaden `public.members` access for convenience.
+- Future `/admin/members` or Secretary detail mode should use a separate role-specific view, such as `public.member_secretary_profiles`.
+- Track detailed scope in `.planning/MEMBER_ROSTER_SCOPE.md`.
 
-**Hard stops:** No tier data yet, no attendance data yet — those columns show "–" or "pending."
+**Hard stops:** Do not show `member_since_term`, "member since", or "member year" as separate roster concepts. Do not put GPA, dues, compliance, emergency contacts, parent contacts, or full admin bulk actions in the general roster.
 
 ---
 

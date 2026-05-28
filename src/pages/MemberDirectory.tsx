@@ -38,12 +38,12 @@ type QuickRosterDraft = {
   phone: string;
   instagram: string;
   snapchat: string;
+  linkedin: string;
   school: string;
   major: string;
   graduation_year: string;
   avatar_url: string;
   pledge_class: string;
-  member_since_term: string;
   birthday_month: string;
   birthday_day: string;
   bio: string;
@@ -121,12 +121,12 @@ export const MemberDirectory = () => {
         phone: nullableText(quickDraft.phone),
         instagram: nullableText(quickDraft.instagram),
         snapchat: nullableText(quickDraft.snapchat),
+        linkedin: nullableText(quickDraft.linkedin),
         school: nullableText(quickDraft.school),
         major: requiredText(quickDraft.major, editingMember.major ?? 'Undeclared'),
         graduation_year: parseRequiredYear(quickDraft.graduation_year, editingMember.graduation_year),
         avatar_url: nullableText(quickDraft.avatar_url),
         pledge_class: nullableText(quickDraft.pledge_class),
-        member_since_term: nullableText(quickDraft.member_since_term),
         birthday_month: parseNullableNumber(quickDraft.birthday_month),
         birthday_day: parseNullableNumber(quickDraft.birthday_day),
         bio: nullableText(quickDraft.bio)
@@ -198,6 +198,7 @@ export const MemberDirectory = () => {
         getLegalName(member),
         getSchool(member),
         member.major,
+        member.linkedin,
         member.phone?.replace(/\D/g, '').slice(-4)
       ]
         .filter(Boolean)
@@ -479,11 +480,11 @@ const QuickRosterEditor = ({
           <QuickField label="Phone" value={draft.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
           <QuickField label="Instagram" value={draft.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
           <QuickField label="Snapchat" value={draft.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
+          <QuickField label="LinkedIn" value={draft.linkedin} onChange={value => onChange('linkedin', value)} placeholder="linkedin.com/in/profile" />
           <QuickField label="School" value={draft.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
           <QuickField label="Major" value={draft.major} onChange={value => onChange('major', value)} />
           <QuickField label="Class Year" value={draft.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
           <QuickField label="Pledge Class" value={draft.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
-          <QuickField label="Member Since" value={draft.member_since_term} onChange={value => onChange('member_since_term', value)} placeholder="Spring 2027" />
           <QuickField label="Birthday Month" value={draft.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
           <QuickField label="Birthday Day" value={draft.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
           <QuickField label="Avatar URL" value={draft.avatar_url} onChange={value => onChange('avatar_url', value)} />
@@ -739,7 +740,6 @@ const ProfileDrawer = ({
               <ProfileFact label="Class Year" value={formatClassYear(member.graduation_year)} />
               <ProfileFact label="School" value={getSchool(member)} />
               <ProfileFact label="Pledge Class" value={member.pledge_class} />
-              <ProfileFact label="Member Since" value={member.member_since_term} />
               <ProfileFact label="Birthday" value={formatBirthday(member)} />
               <ProfileFact label="Study Abroad" value={formatStudyAbroad(member)} muted={!member.current_status_type} />
               <div className="col-span-2">
@@ -754,6 +754,7 @@ const ProfileDrawer = ({
                 <ContactRow icon={<Mail size={18} />} label={member.personal_email ?? member.google_email} href={`mailto:${member.personal_email ?? member.google_email}`} copyValue={member.personal_email ?? member.google_email} />
                 <ContactRow icon={<Instagram size={18} />} label={formatHandle(member.instagram)} href={member.instagram ? `https://instagram.com/${cleanHandle(member.instagram)}` : null} copyValue={member.instagram} />
                 <ContactRow icon={<Camera size={18} />} label={formatHandle(member.snapchat)} href={member.snapchat ? `https://www.snapchat.com/add/${cleanHandle(member.snapchat)}` : null} copyValue={member.snapchat} />
+                <ContactRow icon={<ExternalLink size={18} />} label={formatLinkedIn(member.linkedin)} href={getLinkedInHref(member.linkedin)} copyValue={member.linkedin} />
               </div>
             </section>
 
@@ -883,12 +884,12 @@ const createQuickDraft = (member: DirectoryMember): QuickRosterDraft => ({
   phone: member.phone ?? '',
   instagram: member.instagram ?? '',
   snapchat: member.snapchat ?? '',
+  linkedin: member.linkedin ?? '',
   school: getSchool(member) ?? '',
   major: member.major ?? '',
   graduation_year: member.graduation_year ? String(member.graduation_year) : '',
   avatar_url: member.avatar_url ?? '',
   pledge_class: member.pledge_class ?? '',
-  member_since_term: member.member_since_term ?? '',
   birthday_month: member.birthday_month ? String(member.birthday_month) : '',
   birthday_day: member.birthday_day ? String(member.birthday_day) : '',
   bio: member.bio ?? ''
@@ -994,3 +995,25 @@ const cleanHandle = (handle: string) =>
 
 const formatHandle = (handle: string | null | undefined) =>
   handle ? `@${cleanHandle(handle)}` : null;
+
+const getLinkedInHref = (linkedin: string | null | undefined) => {
+  if (!linkedin) return null;
+  const trimmed = cleanLinkedIn(linkedin);
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  if (trimmed.includes('linkedin.com')) return `https://${trimmed}`;
+  if (trimmed.includes('.')) return `https://${trimmed}`;
+  return `https://www.linkedin.com/in/${trimmed}`;
+};
+
+const formatLinkedIn = (linkedin: string | null | undefined) => {
+  if (!linkedin) return null;
+  const trimmed = cleanLinkedIn(linkedin).replace(/^https?:\/\//, '');
+  if (!trimmed) return null;
+  if (trimmed.includes('linkedin.com')) return trimmed.replace(/\/$/, '');
+  if (trimmed.includes('.')) return trimmed.replace(/\/$/, '');
+  return `linkedin.com/in/${trimmed}`;
+};
+
+const cleanLinkedIn = (linkedin: string) =>
+  linkedin.trim().replace(/^@/, '').replace(/^linkedin\.com\/in\//, '').replace(/^www\.linkedin\.com\/in\//, '').replace(/\/$/, '');
