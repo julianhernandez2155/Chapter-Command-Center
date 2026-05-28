@@ -58,13 +58,6 @@ type VerificationForm = {
   guardian_2_phone: string;
   guardian_2_email: string;
   guardian_2_outreach_consent: boolean;
-  emergency_id: string | null;
-  emergency_first_name: string;
-  emergency_last_name: string;
-  emergency_relationship: string;
-  emergency_phone: string;
-  emergency_email: string;
-  emergency_same_as_guardian: boolean;
   correction_notes: string;
 };
 
@@ -78,6 +71,11 @@ const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
   housing_type: 'Housing type',
   local_address: 'Local address',
   campus_housing: 'Building',
+  guardian_1_first_name: 'Parent/guardian first name',
+  guardian_1_last_name: 'Parent/guardian last name',
+  guardian_1_relationship: 'Parent/guardian relationship',
+  guardian_1_phone: 'Parent/guardian phone',
+  guardian_1_email: 'Parent/guardian email',
   home_city: 'Home city',
   home_state: 'Home state',
   tshirt_size: 'T-shirt size',
@@ -85,8 +83,6 @@ const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
 };
 
 const OPTIONAL_FIELD_LABELS: Record<VerificationOptionalReviewField, string> = {
-  parent_guardian_contact: 'Parent/guardian contact',
-  emergency_contact: 'Emergency contact',
   parent_outreach_consent: 'Parent contact consent'
 };
 
@@ -186,7 +182,7 @@ export const MemberVerification = () => {
     setError(null);
     try {
       await updateMyVerificationProfile(profile.id, toProfileUpdate(form));
-      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form), toEmergencyContactInput(form));
+      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form));
       await saveMyVerificationSubmission({
         cycleId: gateStatus.cycle_id,
         memberId: gateStatus.member_id,
@@ -222,7 +218,7 @@ export const MemberVerification = () => {
     setError(null);
     try {
       await updateMyVerificationProfile(profile.id, toProfileUpdate(form));
-      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form), toEmergencyContactInput(form));
+      await saveMyVerificationContacts(profile.id, toGuardianContactInputs(form));
       await saveMyVerificationSubmission({
         cycleId: gateStatus.cycle_id,
         memberId: gateStatus.member_id,
@@ -356,13 +352,13 @@ export const MemberVerification = () => {
                 <TextField label="LinkedIn" value={form.linkedin} onChange={value => updateForm('linkedin', value)} />
               </VerificationSection>
 
-              <VerificationSection title="Parent / Emergency Contact">
+              <VerificationSection title="Parent / Guardian Contact">
                 <ContactGroup title="Parent / Guardian 1">
-                  <TextField label="First name" value={form.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
-                  <TextField label="Last name" value={form.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
-                  <TextField label="Phone" value={form.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
-                  <TextField label="Email" value={form.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
-                  <TextField label="Relationship" value={form.guardian_1_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_1_relationship', value)} />
+                  <TextField required label="First name" value={form.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
+                  <TextField required label="Last name" value={form.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
+                  <TextField required label="Phone" value={form.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
+                  <TextField required label="Email" value={form.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
+                  <TextField required label="Relationship" value={form.guardian_1_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_1_relationship', value)} />
                   <ConsentField checked={form.guardian_1_outreach_consent} onChange={value => updateForm('guardian_1_outreach_consent', value)} />
                 </ContactGroup>
 
@@ -373,15 +369,6 @@ export const MemberVerification = () => {
                   <TextField label="Email" value={form.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
                   <TextField label="Relationship" value={form.guardian_2_relationship} placeholder="Parent, guardian, etc." onChange={value => updateForm('guardian_2_relationship', value)} />
                   <ConsentField checked={form.guardian_2_outreach_consent} onChange={value => updateForm('guardian_2_outreach_consent', value)} />
-                </ContactGroup>
-
-                <ContactGroup title="Emergency Contact">
-                  <TextField label="First name" value={form.emergency_first_name} onChange={value => updateForm('emergency_first_name', value)} />
-                  <TextField label="Last name" value={form.emergency_last_name} onChange={value => updateForm('emergency_last_name', value)} />
-                  <TextField label="Relationship" value={form.emergency_relationship} onChange={value => updateForm('emergency_relationship', value)} />
-                  <TextField label="Phone" value={form.emergency_phone} onChange={value => updateForm('emergency_phone', value)} />
-                  <TextField label="Email" value={form.emergency_email} onChange={value => updateForm('emergency_email', value)} />
-                  <CheckboxField label="Same as parent/guardian" checked={form.emergency_same_as_guardian} onChange={value => updateForm('emergency_same_as_guardian', value)} />
                 </ContactGroup>
               </VerificationSection>
 
@@ -596,7 +583,6 @@ const ReadonlyField = ({ label, value }: { label: string; value: string | null }
 function toForm(profile: MemberVerificationSelfProfile, contacts: MemberVerificationContacts): VerificationForm {
   const guardianOne = contacts.guardians.find(contact => contact.contact_order === 1);
   const guardianTwo = contacts.guardians.find(contact => contact.contact_order === 2);
-  const emergency = contacts.emergencyContact;
 
   return {
     preferred_name: profile.preferred_name ?? '',
@@ -630,13 +616,6 @@ function toForm(profile: MemberVerificationSelfProfile, contacts: MemberVerifica
     guardian_2_phone: guardianTwo?.phone ?? '',
     guardian_2_email: guardianTwo?.email ?? '',
     guardian_2_outreach_consent: guardianTwo?.outreach_consent ?? false,
-    emergency_id: emergency?.id ?? null,
-    emergency_first_name: emergency?.first_name ?? firstNameFallback(emergency?.contact_name),
-    emergency_last_name: emergency?.last_name ?? lastNameFallback(emergency?.contact_name),
-    emergency_relationship: emergency?.relationship ?? '',
-    emergency_phone: emergency?.phone ?? '',
-    emergency_email: emergency?.email ?? '',
-    emergency_same_as_guardian: emergency?.same_as_guardian ?? false,
     correction_notes: ''
   };
 }
@@ -721,8 +700,6 @@ function getActiveRequiredFields(form: VerificationForm, baseFields: Verificatio
 
 function computeOptionalReviewFlags(form: VerificationForm): VerificationOptionalReviewField[] {
   return [
-    !hasParentGuardianContact(form) ? 'parent_guardian_contact' : null,
-    !hasEmergencyContact(form) ? 'emergency_contact' : null,
     !hasParentOutreachConsent(form) ? 'parent_outreach_consent' : null
   ].filter(Boolean) as VerificationOptionalReviewField[];
 }
@@ -745,10 +722,8 @@ function buildSnapshot(form: VerificationForm, profile: MemberVerificationSelfPr
     google_email: profile.google_email,
     ...toProfileUpdate(form),
     parent_guardian_contacts: toGuardianContactInputs(form),
-    emergency_contact: toEmergencyContactInput(form),
     optional_status: {
       has_parent_guardian_contact: hasParentGuardianContact(form),
-      has_emergency_contact: hasEmergencyContact(form),
       parent_outreach_consent: hasParentOutreachConsent(form)
     }
   };
@@ -779,18 +754,6 @@ function toGuardianContactInputs(form: VerificationForm) {
   ];
 }
 
-function toEmergencyContactInput(form: VerificationForm) {
-  return {
-    id: form.emergency_id,
-    firstName: form.emergency_first_name,
-    lastName: form.emergency_last_name,
-    relationship: form.emergency_relationship,
-    phone: form.emergency_phone,
-    email: form.emergency_email,
-    sameAsGuardian: form.emergency_same_as_guardian
-  };
-}
-
 function hasParentGuardianContact(form: VerificationForm) {
   return [
     form.guardian_1_first_name,
@@ -804,24 +767,13 @@ function hasParentGuardianContact(form: VerificationForm) {
   ].some(value => value.trim().length > 0);
 }
 
-function hasEmergencyContact(form: VerificationForm) {
-  return [
-    form.emergency_first_name,
-    form.emergency_last_name,
-    form.emergency_relationship,
-    form.emergency_phone,
-    form.emergency_email
-  ].some(value => value.trim().length > 0);
-}
-
 function hasParentOutreachConsent(form: VerificationForm) {
   return form.guardian_1_outreach_consent || form.guardian_2_outreach_consent;
 }
 
 function emptyVerificationContacts(): MemberVerificationContacts {
   return {
-    guardians: [],
-    emergencyContact: null
+    guardians: []
   };
 }
 
