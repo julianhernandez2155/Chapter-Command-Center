@@ -616,7 +616,9 @@ export const SecretaryMemberRegistry = () => {
               sort={sort}
               density={density}
               savingId={savingId}
-              onSelect={setSelectedMember}
+              onSelect={member => {
+                setSelectedMember(current => current?.id === member.id ? null : member);
+              }}
               onToggleRow={memberId => {
                 setSelectedIds(current => {
                   const next = new Set(current);
