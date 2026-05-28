@@ -735,6 +735,8 @@ const ProfileDrawer = ({
 }) => {
   const currentPositions = positions.filter(position => !position.removed_at);
   const pastPositions = positions.filter(position => position.removed_at);
+  const primaryName = member ? getDrawerPrimaryName(member) : '';
+  const legalName = member ? getDrawerLegalName(member) : null;
 
   return (
     <aside
@@ -757,8 +759,15 @@ const ProfileDrawer = ({
               <X size={20} />
             </button>
             <div className="absolute bottom-8 left-8 right-8">
-              <h2 className="text-5xl leading-tight font-black text-on-surface tracking-tight mb-2">{getDisplayName(member)}</h2>
-              <p className="text-lg text-on-surface-variant font-medium mb-5">{getLegalName(member)}</p>
+              <h2 className={cn("leading-[0.96] font-black text-on-surface tracking-tight mb-3 break-words", getDrawerNameSize(primaryName))}>
+                {primaryName}
+              </h2>
+              {legalName && (
+                <p className="text-sm text-on-surface-variant font-semibold mb-5">
+                  <span className="text-[10px] uppercase tracking-[0.2rem] text-on-surface-variant/60 font-black mr-2">Legal name</span>
+                  {legalName}
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {currentPositions[0] && <Badge tone="gold">{currentPositions[0].display_name}</Badge>}
                 {member.current_status_type === 'study_abroad' && <Badge tone="gold">Study Abroad</Badge>}
@@ -983,6 +992,24 @@ const getCardName = (member: DirectoryMember) =>
 
 const getLegalName = (member: DirectoryMember) =>
   `${member.legal_first_name} ${member.legal_last_name}`.trim();
+
+const getDrawerPrimaryName = getCardName;
+
+const getDrawerLegalName = (member: DirectoryMember) => {
+  const legalName = getLegalName(member);
+  const primaryName = getDrawerPrimaryName(member);
+
+  return normalizeName(legalName) !== normalizeName(primaryName) ? legalName : null;
+};
+
+const normalizeName = (name: string) =>
+  name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const getDrawerNameSize = (name: string) => {
+  if (name.length > 30) return 'text-3xl';
+  if (name.length > 22) return 'text-4xl';
+  return 'text-5xl';
+};
 
 const getSchool = (member: DirectoryMember) =>
   member.school ?? member.college ?? null;
