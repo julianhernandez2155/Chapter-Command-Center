@@ -1198,7 +1198,7 @@ const RegistryDrawer = ({
 
       <DrawerSection title="Contact">
         <DetailRow label="Phone" value={member.phone} icon={<Phone size={14} />} />
-        <DetailRow label="Google email" value={member.google_email} icon={<Mail size={14} />} />
+        <DetailRow label="School email" value={member.google_email} icon={<Mail size={14} />} />
         <DetailRow label="Personal email" value={member.personal_email} icon={<Mail size={14} />} />
         <DetailRow label="Local address" value={member.local_address} />
         <DetailRow label="Campus housing" value={member.campus_housing} />
@@ -1277,7 +1277,7 @@ const REGISTRY_COLUMNS: RegistryColumn[] = [
   column('status', 'Status', 'Identity', 150, member => <StatusPill status={member.status} />, member => member.status, member => member.status),
   column('suid', 'SUID', 'Identity', 120, member => member.suid, member => member.suid, member => member.suid),
   column('phone', 'Phone', 'Contact', 150, member => member.phone ?? 'Missing', member => member.phone ?? '', member => member.phone),
-  column('google_email', 'Google Email', 'Contact', 240, member => member.google_email, member => member.google_email, member => member.google_email),
+  column('google_email', 'School Email', 'Contact', 240, member => member.google_email, member => member.google_email, member => member.google_email),
   column('personal_email', 'Personal Email', 'Contact', 240, member => member.personal_email ?? 'Missing', member => member.personal_email ?? '', member => member.personal_email),
   column('expected_graduation_term', 'Grad Term', 'Academic', 160, member => member.expected_graduation_term ?? String(member.graduation_year ?? 'Missing'), member => member.expected_graduation_term ?? '', member => member.expected_graduation_term ?? member.graduation_year),
   column('graduation_year', 'Grad Year', 'Academic', 120, member => member.graduation_year ?? 'Missing', member => member.graduation_year ?? '', member => member.graduation_year),
