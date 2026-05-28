@@ -675,11 +675,11 @@ const MemberCard = ({ member, selected, onSelect }: { member: DirectoryMember; s
     <article
       onClick={onSelect}
       className={cn(
-        "bg-surface-container-low rounded-xl p-8 flex flex-col items-center text-center transition-all duration-300 hover:bg-surface-container cursor-pointer min-h-[430px]",
-        selected && "bg-surface-container ring-1 ring-primary/30"
+        "group bg-surface-container-low rounded-xl p-8 flex flex-col items-center text-center transition-all duration-300 cursor-pointer min-h-[430px] border border-transparent hover:-translate-y-1 hover:bg-surface-container hover:border-primary/20 hover:shadow-[0_18px_45px_rgba(0,0,0,0.28)]",
+        selected && "bg-surface-container ring-1 ring-primary/30 border-primary/25"
       )}
     >
-      <div className="relative mb-7">
+      <div className="relative mb-7 transition-transform duration-300 group-hover:scale-[1.03]">
         <Avatar member={member} size="lg" />
         {member.current_status_type === 'study_abroad' && (
           <span className="absolute -top-1 -right-4 bg-secondary text-surface text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-tighter">
