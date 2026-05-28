@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowUpDown,
+  ChevronDown,
   CheckCircle2,
   CheckSquare,
   Columns3,
@@ -186,6 +187,8 @@ export const SecretaryMemberRegistry = () => {
   const [density, setDensity] = useState<Density>(INITIAL_VIEW.density);
   const [search, setSearch] = useState('');
   const [columnPanelOpen, setColumnPanelOpen] = useState(false);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [viewNameDraft, setViewNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -215,8 +218,8 @@ export const SecretaryMemberRegistry = () => {
       const data = await fetchSecretaryMemberProfiles();
       setMembers(data);
       setSelectedMember(current => {
-        if (current) return data.find(member => member.id === current.id) ?? data[0] ?? null;
-        return data[0] ?? null;
+        if (current) return data.find(member => member.id === current.id) ?? null;
+        return null;
       });
     } catch (err) {
       console.error('Error loading Secretary Registry:', err);
@@ -299,6 +302,8 @@ export const SecretaryMemberRegistry = () => {
     setDensity(view.density);
     setSelectedIds(new Set());
     setColumnPanelOpen(false);
+    setFilterPanelOpen(false);
+    setViewMenuOpen(false);
   };
 
   const updateFilter = <K extends keyof RegistryFilters>(key: K, value: RegistryFilters[K]) => {
@@ -470,25 +475,17 @@ export const SecretaryMemberRegistry = () => {
 
         <div className="bg-surface-container-low rounded-2xl p-4 flex flex-col gap-4">
           <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-center 2xl:justify-between">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {SYSTEM_VIEWS.map(view => (
-                <React.Fragment key={view.id}>
-                  <ViewButton view={view} active={activeViewId === view.id} onClick={() => selectView(view)} />
-                </React.Fragment>
-              ))}
-              {customViews.map(view => (
-                <React.Fragment key={view.id}>
-                  <ViewButton
-                    view={view}
-                    active={activeViewId === view.id}
-                    onClick={() => selectView(view)}
-                    onDelete={() => deleteCustomView(view.id)}
-                  />
-                </React.Fragment>
-              ))}
-            </div>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+              <ViewDropdown
+                activeView={activeView}
+                systemViews={SYSTEM_VIEWS}
+                customViews={customViews}
+                open={viewMenuOpen}
+                onToggle={() => setViewMenuOpen(current => !current)}
+                onSelect={selectView}
+                onDelete={deleteCustomView}
+              />
 
-            <div className="flex flex-col sm:flex-row gap-3">
               <label className="bg-surface-container-lowest rounded-full px-5 py-3 flex items-center gap-3 text-on-surface-variant w-full sm:w-96 focus-within:ring-1 focus-within:ring-primary/40">
                 <Search size={18} />
                 <input
@@ -498,7 +495,24 @@ export const SecretaryMemberRegistry = () => {
                   onChange={event => setSearch(event.target.value)}
                 />
               </label>
+            </div>
 
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => setFilterPanelOpen(current => !current)}
+                className={cn(
+                  'rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors',
+                  filterPanelOpen ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
+                )}
+              >
+                <Filter size={15} />
+                Filters
+                {getActiveFilterCount(filters) > 0 && (
+                  <span className="bg-primary text-white rounded-full px-2 py-0.5 text-[9px]">
+                    {getActiveFilterCount(filters)}
+                  </span>
+                )}
+              </button>
               <button
                 onClick={() => setColumnPanelOpen(current => !current)}
                 className={cn(
@@ -512,45 +526,28 @@ export const SecretaryMemberRegistry = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3 items-center">
-            <FilterSelect label="Status" value={filters.status} onChange={value => updateFilter('status', value)}>
-              <option value="all">All statuses</option>
-              {options.statuses.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Pledge" value={filters.pledgeClass} onChange={value => updateFilter('pledgeClass', value)}>
-              <option value="all">All pledge classes</option>
-              {options.pledgeClasses.map(pledgeClass => <option key={pledgeClass} value={pledgeClass}>{pledgeClass}</option>)}
-            </FilterSelect>
-            <FilterSelect label="School" value={filters.school} onChange={value => updateFilter('school', value)}>
-              <option value="all">All schools</option>
-              {options.schools.map(school => <option key={school} value={school}>{school}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Grad" value={filters.gradTerm} onChange={value => updateFilter('gradTerm', value)}>
-              <option value="all">All grad terms</option>
-              {options.gradTerms.map(term => <option key={term} value={term}>{term}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Missing" value={filters.missing} onChange={value => updateFilter('missing', value as MissingFilter)}>
-              <option value="all">All records</option>
-              <option value="missing">Missing only</option>
-              <option value="complete">Complete only</option>
-            </FilterSelect>
-            <FilterSelect label="Verified" value={filters.verification} onChange={value => updateFilter('verification', value as VerificationFilter)}>
-              <option value="all">Any verification</option>
-              <option value="verified">Verified</option>
-              <option value="unverified">Unverified</option>
-              <option value="stale_30">Stale 30d</option>
-            </FilterSelect>
-            <button
-              onClick={() => {
+          <div className="flex flex-wrap items-center gap-2 text-xs text-on-surface-variant font-bold">
+            <span className="text-secondary">{activeView.label}</span>
+            <span>·</span>
+            <span>{getActiveFilterCount(filters)} filters active</span>
+            <span>·</span>
+            <span>{formatLabel(density)}</span>
+            <span>·</span>
+            <span>{activeColumns.length} columns</span>
+          </div>
+
+          {filterPanelOpen && (
+            <FilterPanel
+              filters={filters}
+              options={options}
+              onChange={updateFilter}
+              onClear={() => {
                 setFilters({ ...DEFAULT_FILTERS });
                 setSearch('');
                 setActiveViewId('custom-unsaved');
               }}
-              className="bg-surface-container-lowest rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface"
-            >
-              Clear
-            </button>
-          </div>
+            />
+          )}
 
           {columnPanelOpen && (
             <ColumnPanel
@@ -593,7 +590,10 @@ export const SecretaryMemberRegistry = () => {
       )}
 
       {!loading && (
-        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
+        <section className={cn(
+          'grid grid-cols-1 gap-6',
+          selectedMember && 'xl:grid-cols-[minmax(0,1fr)_420px]'
+        )}>
           <div className="bg-surface-container-low rounded-2xl overflow-hidden">
             <TableToolbar
               selectedCount={selectedRows.length}
@@ -631,56 +631,179 @@ export const SecretaryMemberRegistry = () => {
             />
           </div>
 
-          <RegistryDrawer
-            member={selectedMember}
-            onClose={() => setSelectedMember(null)}
-            onMarkVerified={member => void markVerified(member)}
-            onMarkChased={member => void markChased(member)}
-            saving={Boolean(selectedMember && savingId === selectedMember.id)}
-          />
+          {selectedMember && (
+            <RegistryDrawer
+              member={selectedMember}
+              onClose={() => setSelectedMember(null)}
+              onMarkVerified={member => void markVerified(member)}
+              onMarkChased={member => void markChased(member)}
+              saving={savingId === selectedMember.id}
+            />
+          )}
         </section>
       )}
     </div>
   );
 };
 
-const ViewButton = ({
+const ViewDropdown = ({
+  activeView,
+  systemViews,
+  customViews,
+  open,
+  onToggle,
+  onSelect,
+  onDelete
+}: {
+  activeView: RegistrySavedView;
+  systemViews: RegistrySavedView[];
+  customViews: RegistrySavedView[];
+  open: boolean;
+  onToggle: () => void;
+  onSelect: (view: RegistrySavedView) => void;
+  onDelete: (viewId: string) => void;
+}) => (
+  <div className="relative">
+    <button
+      onClick={onToggle}
+      title={activeView.description}
+      className="bg-primary text-white rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors min-w-56"
+    >
+      <TableProperties size={15} />
+      {activeView.label}
+      <ChevronDown size={15} className={cn('transition-transform', open && 'rotate-180')} />
+    </button>
+
+    {open && (
+      <div className="absolute left-0 top-14 z-40 w-80 bg-surface-container-lowest rounded-2xl p-3 shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
+        <ViewGroup label="System Views">
+          {systemViews.map(view => (
+            <React.Fragment key={view.id}>
+              <ViewMenuItem
+                view={view}
+                active={activeView.id === view.id}
+                onSelect={() => onSelect(view)}
+              />
+            </React.Fragment>
+          ))}
+        </ViewGroup>
+
+        <ViewGroup label="My Views">
+          {customViews.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-on-surface-variant font-bold">No saved custom views yet.</p>
+          ) : customViews.map(view => (
+            <React.Fragment key={view.id}>
+              <ViewMenuItem
+                view={view}
+                active={activeView.id === view.id}
+                onSelect={() => onSelect(view)}
+                onDelete={() => onDelete(view.id)}
+              />
+            </React.Fragment>
+          ))}
+        </ViewGroup>
+      </div>
+    )}
+  </div>
+);
+
+const ViewGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <section className="py-2">
+    <h3 className="px-3 mb-2 text-[9px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">
+      {label}
+    </h3>
+    <div className="space-y-1">{children}</div>
+  </section>
+);
+
+const ViewMenuItem = ({
   view,
   active,
-  onClick,
+  onSelect,
   onDelete
 }: {
   view: RegistrySavedView;
   active: boolean;
-  onClick: () => void;
+  onSelect: () => void;
   onDelete?: () => void;
 }) => (
-  <div className="relative group/view">
+  <div className={cn(
+    'group/menu rounded-xl flex items-center gap-2',
+    active ? 'bg-primary/15 text-primary' : 'text-on-surface hover:bg-surface-container-high'
+  )}>
     <button
-      onClick={onClick}
-      title={view.description}
-      className={cn(
-        'px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.18rem] whitespace-nowrap transition-colors flex items-center gap-2',
-        active
-          ? 'bg-primary text-white'
-          : 'bg-surface-container-lowest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-      )}
+      onClick={onSelect}
+      className="flex-1 text-left px-3 py-3"
     >
-      {view.system ? <TableProperties size={14} /> : <Save size={14} />}
-      {view.label}
+      <p className="text-xs font-black uppercase tracking-[0.14rem]">{view.label}</p>
+      <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-1">{view.description}</p>
     </button>
     {onDelete && (
       <button
-        onClick={event => {
-          event.stopPropagation();
-          onDelete();
-        }}
-        className="absolute -right-2 -top-2 hidden group-hover/view:flex bg-surface-container-high text-on-surface-variant hover:text-error rounded-full p-1"
+        onClick={onDelete}
+        className="mr-2 p-2 rounded-full text-on-surface-variant hover:text-error opacity-0 group-hover/menu:opacity-100 transition-opacity"
         title="Delete saved view"
       >
-        <Trash2 size={12} />
+        <Trash2 size={13} />
       </button>
     )}
+  </div>
+);
+
+const FilterPanel = ({
+  filters,
+  options,
+  onChange,
+  onClear
+}: {
+  filters: RegistryFilters;
+  options: {
+    statuses: string[];
+    pledgeClasses: string[];
+    schools: string[];
+    gradTerms: string[];
+  };
+  onChange: <K extends keyof RegistryFilters>(key: K, value: RegistryFilters[K]) => void;
+  onClear: () => void;
+}) => (
+  <div className="bg-surface-container-lowest rounded-2xl p-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <FilterSelect label="Status" value={filters.status} onChange={value => onChange('status', value)}>
+        <option value="all">All statuses</option>
+        {options.statuses.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
+      </FilterSelect>
+      <FilterSelect label="Pledge" value={filters.pledgeClass} onChange={value => onChange('pledgeClass', value)}>
+        <option value="all">All pledge classes</option>
+        {options.pledgeClasses.map(pledgeClass => <option key={pledgeClass} value={pledgeClass}>{pledgeClass}</option>)}
+      </FilterSelect>
+      <FilterSelect label="School" value={filters.school} onChange={value => onChange('school', value)}>
+        <option value="all">All schools</option>
+        {options.schools.map(school => <option key={school} value={school}>{school}</option>)}
+      </FilterSelect>
+      <FilterSelect label="Grad" value={filters.gradTerm} onChange={value => onChange('gradTerm', value)}>
+        <option value="all">All grad terms</option>
+        {options.gradTerms.map(term => <option key={term} value={term}>{term}</option>)}
+      </FilterSelect>
+      <FilterSelect label="Missing" value={filters.missing} onChange={value => onChange('missing', value as MissingFilter)}>
+        <option value="all">All records</option>
+        <option value="missing">Missing only</option>
+        <option value="complete">Complete only</option>
+      </FilterSelect>
+      <FilterSelect label="Verified" value={filters.verification} onChange={value => onChange('verification', value as VerificationFilter)}>
+        <option value="all">Any verification</option>
+        <option value="verified">Verified</option>
+        <option value="unverified">Unverified</option>
+        <option value="stale_30">Stale 30d</option>
+      </FilterSelect>
+    </div>
+    <div className="mt-4 flex justify-end">
+      <button
+        onClick={onClear}
+        className="bg-surface-container-low rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface"
+      >
+        Clear Filters
+      </button>
+    </div>
   </div>
 );
 
@@ -1304,6 +1427,13 @@ function persistCustomViews(views: RegistrySavedView[]) {
 
 function uniqueOptions(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
+}
+
+function getActiveFilterCount(filters: RegistryFilters) {
+  return Object.entries(filters).filter(([key, value]) => {
+    if (key === 'roster') return value !== 'all';
+    return value !== 'all';
+  }).length;
 }
 
 function getDisplayName(member: SecretaryMemberProfile) {
