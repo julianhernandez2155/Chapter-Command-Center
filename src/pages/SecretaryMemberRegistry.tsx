@@ -1,15 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  ArrowUpDown,
   CheckCircle2,
+  CheckSquare,
+  Columns3,
   Copy,
   Download,
+  Filter,
   Loader2,
   Mail,
   Phone,
+  Save,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  Square,
+  TableProperties,
+  Trash2,
   UserRound,
   X
 } from 'lucide-react';
@@ -21,24 +30,182 @@ import {
   markSecretaryProfileVerified
 } from '../lib/memberSecretaryRegistry';
 
-type RegistryView = 'active' | 'contact' | 'missing' | 'family';
+type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
+type Density = 'compact' | 'standard' | 'comfortable';
+type SortDirection = 'asc' | 'desc';
+type VerificationFilter = 'all' | 'verified' | 'unverified' | 'stale_30';
+type MissingFilter = 'all' | 'missing' | 'complete';
+type RosterFilter = 'all' | 'active' | 'missing' | 'status_watchlist';
 
-const REGISTRY_VIEWS: { id: RegistryView; label: string }[] = [
-  { id: 'active', label: 'Active Roster' },
-  { id: 'contact', label: 'Contact Sheet' },
-  { id: 'missing', label: 'Missing Data' },
-  { id: 'family', label: 'Parent / Emergency' }
+type ColumnKey =
+  | 'name'
+  | 'status'
+  | 'suid'
+  | 'phone'
+  | 'google_email'
+  | 'personal_email'
+  | 'expected_graduation_term'
+  | 'graduation_year'
+  | 'pledge_class'
+  | 'initiation_date'
+  | 'school'
+  | 'major'
+  | 'local_address'
+  | 'campus_housing'
+  | 'home'
+  | 'instagram'
+  | 'snapchat'
+  | 'linkedin'
+  | 'missing_count'
+  | 'missing_fields'
+  | 'last_verified_at'
+  | 'last_chased_at'
+  | 'guardian_1'
+  | 'guardian_2'
+  | 'emergency_contact'
+  | 'parent_outreach_consent';
+
+interface RegistryColumn {
+  key: ColumnKey;
+  label: string;
+  group: ColumnGroup;
+  minWidth: number;
+  sensitivity?: 'family_contact';
+  sortable?: boolean;
+  exportable?: boolean;
+  render: (member: SecretaryMemberProfile) => React.ReactNode;
+  exportValue: (member: SecretaryMemberProfile) => string | number;
+  sortValue?: (member: SecretaryMemberProfile) => string | number | null;
+}
+
+interface RegistryFilters {
+  roster: RosterFilter;
+  status: string;
+  pledgeClass: string;
+  school: string;
+  gradTerm: string;
+  missing: MissingFilter;
+  verification: VerificationFilter;
+}
+
+interface RegistrySort {
+  column: ColumnKey;
+  direction: SortDirection;
+}
+
+interface RegistrySavedView {
+  id: string;
+  label: string;
+  description: string;
+  columns: ColumnKey[];
+  filters: RegistryFilters;
+  sort: RegistrySort;
+  density: Density;
+  system?: boolean;
+  sensitive?: boolean;
+}
+
+const CUSTOM_VIEWS_STORAGE_KEY = 'chapter-command-center-secretary-registry-views-v1';
+
+const DEFAULT_FILTERS: RegistryFilters = {
+  roster: 'all',
+  status: 'all',
+  pledgeClass: 'all',
+  school: 'all',
+  gradTerm: 'all',
+  missing: 'all',
+  verification: 'all'
+};
+
+const SYSTEM_VIEWS: RegistrySavedView[] = [
+  {
+    id: 'active',
+    label: 'Active Roster',
+    description: 'Working roster with chapter and academic context.',
+    columns: ['name', 'status', 'expected_graduation_term', 'pledge_class', 'school', 'major', 'phone', 'missing_count'],
+    filters: { ...DEFAULT_FILTERS, roster: 'active' },
+    sort: { column: 'name', direction: 'asc' },
+    density: 'standard',
+    system: true
+  },
+  {
+    id: 'contact',
+    label: 'Contact Sheet',
+    description: 'Fast lookup and contact exports.',
+    columns: ['name', 'phone', 'google_email', 'personal_email', 'instagram', 'snapchat', 'linkedin', 'status'],
+    filters: { ...DEFAULT_FILTERS },
+    sort: { column: 'name', direction: 'asc' },
+    density: 'compact',
+    system: true
+  },
+  {
+    id: 'missing',
+    label: 'Missing Data',
+    description: 'Follow-up list for incomplete member records.',
+    columns: ['name', 'missing_count', 'missing_fields', 'phone', 'personal_email', 'pledge_class', 'last_chased_at', 'last_verified_at'],
+    filters: { ...DEFAULT_FILTERS, roster: 'missing', missing: 'missing' },
+    sort: { column: 'missing_count', direction: 'desc' },
+    density: 'standard',
+    system: true
+  },
+  {
+    id: 'family',
+    label: 'Parent / Emergency',
+    description: 'Sensitive family and emergency contact readiness.',
+    columns: ['name', 'phone', 'guardian_1', 'guardian_2', 'emergency_contact', 'parent_outreach_consent'],
+    filters: { ...DEFAULT_FILTERS },
+    sort: { column: 'name', direction: 'asc' },
+    density: 'comfortable',
+    system: true,
+    sensitive: true
+  },
+  {
+    id: 'status_watchlist',
+    label: 'Status Watchlist',
+    description: 'Members outside the standard active/new/alumni pattern.',
+    columns: ['name', 'status', 'expected_graduation_term', 'pledge_class', 'school', 'phone', 'last_verified_at', 'missing_count'],
+    filters: { ...DEFAULT_FILTERS, roster: 'status_watchlist' },
+    sort: { column: 'status', direction: 'asc' },
+    density: 'standard',
+    system: true
+  }
 ];
+
+const INITIAL_VIEW = SYSTEM_VIEWS[0];
 
 export const SecretaryMemberRegistry = () => {
   const [members, setMembers] = useState<SecretaryMemberProfile[]>([]);
   const [selectedMember, setSelectedMember] = useState<SecretaryMemberProfile | null>(null);
-  const [view, setView] = useState<RegistryView>('active');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [customViews, setCustomViews] = useState<RegistrySavedView[]>(loadCustomViews);
+  const [activeViewId, setActiveViewId] = useState(INITIAL_VIEW.id);
+  const [activeBaseViewLabel, setActiveBaseViewLabel] = useState(INITIAL_VIEW.label);
+  const [selectedColumns, setSelectedColumns] = useState<ColumnKey[]>(INITIAL_VIEW.columns);
+  const [filters, setFilters] = useState<RegistryFilters>(INITIAL_VIEW.filters);
+  const [sort, setSort] = useState<RegistrySort>(INITIAL_VIEW.sort);
+  const [density, setDensity] = useState<Density>(INITIAL_VIEW.density);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [columnPanelOpen, setColumnPanelOpen] = useState(false);
+  const [viewNameDraft, setViewNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const allViews = useMemo(() => [...SYSTEM_VIEWS, ...customViews], [customViews]);
+  const activeView = useMemo(
+    () => allViews.find(view => view.id === activeViewId) ?? {
+      ...INITIAL_VIEW,
+      id: 'custom-unsaved',
+      label: `${activeBaseViewLabel} Custom`,
+      description: 'Unsaved custom view based on the current controls.',
+      columns: selectedColumns,
+      filters,
+      sort,
+      density
+    },
+    [activeBaseViewLabel, activeViewId, allViews, density, filters, selectedColumns, sort]
+  );
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -63,39 +230,129 @@ export const SecretaryMemberRegistry = () => {
     void loadMembers();
   }, [loadMembers]);
 
-  const filteredMembers = useMemo(() => {
+  useEffect(() => {
+    persistCustomViews(customViews);
+  }, [customViews]);
+
+  const activeColumns = useMemo(
+    () => sanitizeColumns(selectedColumns).map(key => COLUMN_BY_KEY[key]),
+    [selectedColumns]
+  );
+
+  const options = useMemo(() => ({
+    statuses: uniqueOptions(members.map(member => member.status)),
+    pledgeClasses: uniqueOptions(members.map(member => member.pledge_class)),
+    schools: uniqueOptions(members.map(member => member.school)),
+    gradTerms: uniqueOptions(members.map(member => member.expected_graduation_term ?? String(member.graduation_year ?? '')))
+  }), [members]);
+
+  const visibleMembers = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return members.filter(member => {
-      if (view === 'active' && !['active', 'new_member'].includes(member.status)) return false;
-      if (view === 'missing' && member.missing_required_field_count === 0) return false;
-      if (statusFilter !== 'all' && member.status !== statusFilter) return false;
-      if (!query) return true;
+    return members
+      .filter(member => matchesFilters(member, filters))
+      .filter(member => {
+        if (!query) return true;
 
-      return [
-        getDisplayName(member),
-        getLegalName(member),
-        member.suid,
-        member.phone,
-        member.google_email,
-        member.personal_email,
-        member.school,
-        member.major,
-        member.pledge_class,
-        member.status
-      ]
-        .filter(Boolean)
-        .some(value => value!.toLowerCase().includes(query));
+        return [
+          getDisplayName(member),
+          getLegalName(member),
+          member.suid,
+          member.phone,
+          member.google_email,
+          member.personal_email,
+          member.school,
+          member.major,
+          member.pledge_class,
+          member.status,
+          member.expected_graduation_term,
+          ...member.missing_required_fields
+        ]
+          .filter(Boolean)
+          .some(value => value!.toLowerCase().includes(query));
+      })
+      .sort((a, b) => compareMembers(a, b, sort));
+  }, [filters, members, search, sort]);
+
+  useEffect(() => {
+    setSelectedIds(current => {
+      const visibleIds = new Set(visibleMembers.map(member => member.id));
+      return new Set([...current].filter(id => visibleIds.has(id)));
     });
-  }, [members, search, statusFilter, view]);
+  }, [visibleMembers]);
 
-  const statusOptions = useMemo(
-    () => [...new Set(members.map(member => member.status).filter(Boolean))].sort(),
-    [members]
+  const selectedRows = useMemo(
+    () => visibleMembers.filter(member => selectedIds.has(member.id)),
+    [selectedIds, visibleMembers]
   );
 
   const missingCount = members.filter(member => member.missing_required_field_count > 0).length;
   const verifiedCount = members.filter(member => member.last_verified_at).length;
+  const sensitiveView = activeView.sensitive || activeColumns.some(column => column.sensitivity === 'family_contact');
+
+  const selectView = (view: RegistrySavedView) => {
+    setActiveViewId(view.id);
+    setActiveBaseViewLabel(view.label);
+    setSelectedColumns(sanitizeColumns(view.columns));
+    setFilters(view.filters);
+    setSort(view.sort);
+    setDensity(view.density);
+    setSelectedIds(new Set());
+    setColumnPanelOpen(false);
+  };
+
+  const updateFilter = <K extends keyof RegistryFilters>(key: K, value: RegistryFilters[K]) => {
+    setFilters(current => ({ ...current, [key]: value }));
+    setActiveViewId('custom-unsaved');
+  };
+
+  const toggleColumn = (columnKey: ColumnKey) => {
+    if (columnKey === 'name') return;
+
+    setSelectedColumns(current => {
+      const next = current.includes(columnKey)
+        ? current.filter(key => key !== columnKey)
+        : [...current, columnKey];
+      return sanitizeColumns(next);
+    });
+    setActiveViewId('custom-unsaved');
+  };
+
+  const saveCustomView = () => {
+    const label = viewNameDraft.trim() || `${activeView.label} Copy`;
+    const view: RegistrySavedView = {
+      id: `custom-${Date.now()}`,
+      label,
+      description: 'Personal saved view stored on this device.',
+      columns: sanitizeColumns(selectedColumns),
+      filters,
+      sort,
+      density,
+      sensitive: sensitiveView
+    };
+
+    setCustomViews(current => [...current, view]);
+    setActiveViewId(view.id);
+    setActiveBaseViewLabel(view.label);
+    setViewNameDraft('');
+    setColumnPanelOpen(false);
+  };
+
+  const deleteCustomView = (viewId: string) => {
+    setCustomViews(current => current.filter(view => view.id !== viewId));
+    if (activeViewId === viewId) {
+      selectView(INITIAL_VIEW);
+    }
+  };
+
+  const setSortColumn = (column: RegistryColumn) => {
+    if (!column.sortable) return;
+    setSort(current => ({
+      column: column.key,
+      direction: current.column === column.key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+    setActiveViewId('custom-unsaved');
+  };
 
   const markVerified = async (member: SecretaryMemberProfile) => {
     setSavingId(member.id);
@@ -123,26 +380,51 @@ export const SecretaryMemberRegistry = () => {
     }
   };
 
-  const exportVisibleRows = () => {
-    const csv = toCsv(filteredMembers.map(member => ({
-      name: getDisplayName(member),
-      status: member.status,
-      suid: member.suid,
-      phone: member.phone ?? '',
-      google_email: member.google_email,
-      personal_email: member.personal_email ?? '',
-      school: member.school ?? '',
-      major: member.major ?? '',
-      pledge_class: member.pledge_class ?? '',
-      expected_graduation_term: member.expected_graduation_term ?? '',
-      missing_required_field_count: member.missing_required_field_count
-    })));
+  const markSelectedChased = async () => {
+    if (selectedRows.length === 0) return;
+    setSavingId('bulk-chased');
 
-    downloadText(`secretary-registry-${view}.csv`, csv);
+    try {
+      for (const member of selectedRows) {
+        await markSecretaryProfileChased(member.id);
+      }
+      await loadMembers();
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error('Unable to mark selected registry profiles chased:', err);
+      setError(err instanceof Error ? err.message : 'Unable to mark selected rows chased.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const exportVisibleRows = async () => {
+    const rows = selectedRows.length > 0 ? selectedRows : visibleMembers;
+    const exportColumns = activeColumns.filter(column => column.exportable !== false);
+
+    if (sensitiveView) {
+      const confirmed = window.confirm('This export includes parent/guardian or emergency contact data. Continue?');
+      if (!confirmed) return;
+    }
+
+    setExporting(true);
+    try {
+      const workbook = buildExcelWorkbook({
+        rows,
+        columns: exportColumns,
+        viewLabel: activeView.label,
+        selectedOnly: selectedRows.length > 0,
+        sensitive: sensitiveView
+      });
+      downloadWorkbook(`${slugify(activeView.label)}-${formatFileDate(new Date())}.xls`, workbook);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const copyVisibleEmails = async () => {
-    const emails = filteredMembers
+    const rows = selectedRows.length > 0 ? selectedRows : visibleMembers;
+    const emails = rows
       .flatMap(member => [member.google_email, member.personal_email])
       .filter(Boolean)
       .join(', ');
@@ -163,7 +445,7 @@ export const SecretaryMemberRegistry = () => {
               Member Records
             </h1>
             <p className="mt-3 text-on-surface-variant font-medium">
-              {members.length} records · {missingCount} missing data · {verifiedCount} verified
+              {members.length} records · {missingCount} missing data · {verifiedCount} verified · {visibleMembers.length} in view
             </p>
           </div>
 
@@ -173,58 +455,126 @@ export const SecretaryMemberRegistry = () => {
               className="bg-surface-container-high text-on-surface px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
             >
               <Copy size={15} />
-              Copy Emails
+              {selectedRows.length > 0 ? `Copy ${selectedRows.length} Emails` : 'Copy Emails'}
             </button>
             <button
-              onClick={exportVisibleRows}
-              className="bg-primary text-white px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+              onClick={() => void exportVisibleRows()}
+              disabled={exporting}
+              className="bg-primary text-white px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              <Download size={15} />
-              Export View
+              {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              Export Excel
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-center 2xl:justify-between">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {REGISTRY_VIEWS.map(option => (
+        <div className="bg-surface-container-low rounded-2xl p-4 flex flex-col gap-4">
+          <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-center 2xl:justify-between">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              {SYSTEM_VIEWS.map(view => (
+                <React.Fragment key={view.id}>
+                  <ViewButton view={view} active={activeViewId === view.id} onClick={() => selectView(view)} />
+                </React.Fragment>
+              ))}
+              {customViews.map(view => (
+                <React.Fragment key={view.id}>
+                  <ViewButton
+                    view={view}
+                    active={activeViewId === view.id}
+                    onClick={() => selectView(view)}
+                    onDelete={() => deleteCustomView(view.id)}
+                  />
+                </React.Fragment>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <label className="bg-surface-container-lowest rounded-full px-5 py-3 flex items-center gap-3 text-on-surface-variant w-full sm:w-96 focus-within:ring-1 focus-within:ring-primary/40">
+                <Search size={18} />
+                <input
+                  className="bg-transparent border-none focus:ring-0 p-0 text-sm w-full placeholder:text-on-surface-variant/40"
+                  placeholder="Search name, SUID, phone, email, school..."
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                />
+              </label>
+
               <button
-                key={option.id}
-                onClick={() => setView(option.id)}
+                onClick={() => setColumnPanelOpen(current => !current)}
                 className={cn(
-                  'px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.18rem] whitespace-nowrap transition-colors',
-                  view === option.id
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                  'rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2 transition-colors',
+                  columnPanelOpen ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
                 )}
               >
-                {option.label}
+                <Columns3 size={15} />
+                Customize
               </button>
-            ))}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <label className="bg-surface-container-lowest rounded-full px-5 py-3 flex items-center gap-3 text-on-surface-variant w-full sm:w-96 focus-within:ring-1 focus-within:ring-primary/40">
-              <Search size={18} />
-              <input
-                className="bg-transparent border-none focus:ring-0 p-0 text-sm w-full placeholder:text-on-surface-variant/40"
-                placeholder="Search name, SUID, phone, email, school..."
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-              />
-            </label>
-
-            <select
-              value={statusFilter}
-              onChange={event => setStatusFilter(event.target.value)}
-              className="bg-surface-container-lowest rounded-full px-5 py-3 text-sm text-on-surface border-none focus:ring-1 focus:ring-primary/40"
-            >
+          <div className="flex flex-wrap gap-3 items-center">
+            <FilterSelect label="Status" value={filters.status} onChange={value => updateFilter('status', value)}>
               <option value="all">All statuses</option>
-              {statusOptions.map(status => (
-                <option key={status} value={status}>{formatLabel(status)}</option>
-              ))}
-            </select>
+              {options.statuses.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Pledge" value={filters.pledgeClass} onChange={value => updateFilter('pledgeClass', value)}>
+              <option value="all">All pledge classes</option>
+              {options.pledgeClasses.map(pledgeClass => <option key={pledgeClass} value={pledgeClass}>{pledgeClass}</option>)}
+            </FilterSelect>
+            <FilterSelect label="School" value={filters.school} onChange={value => updateFilter('school', value)}>
+              <option value="all">All schools</option>
+              {options.schools.map(school => <option key={school} value={school}>{school}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Grad" value={filters.gradTerm} onChange={value => updateFilter('gradTerm', value)}>
+              <option value="all">All grad terms</option>
+              {options.gradTerms.map(term => <option key={term} value={term}>{term}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Missing" value={filters.missing} onChange={value => updateFilter('missing', value as MissingFilter)}>
+              <option value="all">All records</option>
+              <option value="missing">Missing only</option>
+              <option value="complete">Complete only</option>
+            </FilterSelect>
+            <FilterSelect label="Verified" value={filters.verification} onChange={value => updateFilter('verification', value as VerificationFilter)}>
+              <option value="all">Any verification</option>
+              <option value="verified">Verified</option>
+              <option value="unverified">Unverified</option>
+              <option value="stale_30">Stale 30d</option>
+            </FilterSelect>
+            <button
+              onClick={() => {
+                setFilters({ ...DEFAULT_FILTERS });
+                setSearch('');
+                setActiveViewId('custom-unsaved');
+              }}
+              className="bg-surface-container-lowest rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface"
+            >
+              Clear
+            </button>
           </div>
+
+          {columnPanelOpen && (
+            <ColumnPanel
+              selectedColumns={selectedColumns}
+              density={density}
+              viewNameDraft={viewNameDraft}
+              onToggleColumn={toggleColumn}
+              onDensityChange={nextDensity => {
+                setDensity(nextDensity);
+                setActiveViewId('custom-unsaved');
+              }}
+              onViewNameChange={setViewNameDraft}
+              onSaveView={saveCustomView}
+            />
+          )}
+
+          {sensitiveView && (
+            <div className="bg-primary/10 rounded-xl px-4 py-3 flex items-center gap-3 text-primary">
+              <AlertCircle size={16} />
+              <p className="text-xs font-bold">
+                Sensitive contact view. Exports include a warning sheet and require confirmation.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -245,12 +595,37 @@ export const SecretaryMemberRegistry = () => {
       {!loading && (
         <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
           <div className="bg-surface-container-low rounded-2xl overflow-hidden">
+            <TableToolbar
+              selectedCount={selectedRows.length}
+              visibleCount={visibleMembers.length}
+              allVisibleSelected={visibleMembers.length > 0 && selectedIds.size === visibleMembers.length}
+              saving={savingId === 'bulk-chased'}
+              onToggleAll={() => {
+                setSelectedIds(current => current.size === visibleMembers.length
+                  ? new Set()
+                  : new Set(visibleMembers.map(member => member.id)));
+              }}
+              onClear={() => setSelectedIds(new Set())}
+              onMarkChased={() => void markSelectedChased()}
+            />
             <RegistryTable
-              view={view}
-              members={filteredMembers}
+              columns={activeColumns}
+              members={visibleMembers}
               selectedMember={selectedMember}
+              selectedIds={selectedIds}
+              sort={sort}
+              density={density}
               savingId={savingId}
               onSelect={setSelectedMember}
+              onToggleRow={memberId => {
+                setSelectedIds(current => {
+                  const next = new Set(current);
+                  if (next.has(memberId)) next.delete(memberId);
+                  else next.add(memberId);
+                  return next;
+                });
+              }}
+              onSort={setSortColumn}
               onMarkVerified={member => void markVerified(member)}
               onMarkChased={member => void markChased(member)}
             />
@@ -269,88 +644,352 @@ export const SecretaryMemberRegistry = () => {
   );
 };
 
-const RegistryTable = ({
+const ViewButton = ({
   view,
-  members,
-  selectedMember,
-  savingId,
-  onSelect,
-  onMarkVerified,
+  active,
+  onClick,
+  onDelete
+}: {
+  view: RegistrySavedView;
+  active: boolean;
+  onClick: () => void;
+  onDelete?: () => void;
+}) => (
+  <div className="relative group/view">
+    <button
+      onClick={onClick}
+      title={view.description}
+      className={cn(
+        'px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.18rem] whitespace-nowrap transition-colors flex items-center gap-2',
+        active
+          ? 'bg-primary text-white'
+          : 'bg-surface-container-lowest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+      )}
+    >
+      {view.system ? <TableProperties size={14} /> : <Save size={14} />}
+      {view.label}
+    </button>
+    {onDelete && (
+      <button
+        onClick={event => {
+          event.stopPropagation();
+          onDelete();
+        }}
+        className="absolute -right-2 -top-2 hidden group-hover/view:flex bg-surface-container-high text-on-surface-variant hover:text-error rounded-full p-1"
+        title="Delete saved view"
+      >
+        <Trash2 size={12} />
+      </button>
+    )}
+  </div>
+);
+
+const FilterSelect = ({
+  label,
+  value,
+  onChange,
+  children
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) => (
+  <label className="bg-surface-container-lowest rounded-full pl-4 pr-3 py-2 flex items-center gap-2 text-on-surface-variant">
+    <Filter size={13} className="text-primary" />
+    <span className="text-[9px] uppercase tracking-[0.16rem] font-black">{label}</span>
+    <select
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      className="bg-transparent border-none focus:ring-0 p-0 text-xs text-on-surface min-w-24"
+    >
+      {children}
+    </select>
+  </label>
+);
+
+const ColumnPanel = ({
+  selectedColumns,
+  density,
+  viewNameDraft,
+  onToggleColumn,
+  onDensityChange,
+  onViewNameChange,
+  onSaveView
+}: {
+  selectedColumns: ColumnKey[];
+  density: Density;
+  viewNameDraft: string;
+  onToggleColumn: (column: ColumnKey) => void;
+  onDensityChange: (density: Density) => void;
+  onViewNameChange: (value: string) => void;
+  onSaveView: () => void;
+}) => {
+  const groupedColumns = COLUMN_GROUPS.map(group => ({
+    group,
+    columns: REGISTRY_COLUMNS.filter(column => column.group === group)
+  }));
+
+  return (
+    <div className="bg-surface-container-lowest rounded-2xl p-5 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
+      <div className="space-y-5">
+        {groupedColumns.map(({ group, columns }) => (
+          <section key={group}>
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant mb-3">{group}</h3>
+            <div className="flex flex-wrap gap-2">
+              {columns.map(column => {
+                const checked = selectedColumns.includes(column.key);
+                return (
+                  <button
+                    key={column.key}
+                    onClick={() => onToggleColumn(column.key)}
+                    disabled={column.key === 'name'}
+                    className={cn(
+                      'rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.12rem] flex items-center gap-2 transition-colors disabled:opacity-70',
+                      checked
+                        ? 'bg-secondary/15 text-secondary'
+                        : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
+                    )}
+                  >
+                    {checked ? <CheckSquare size={13} /> : <Square size={13} />}
+                    {column.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <aside className="bg-surface-container-low rounded-xl p-4 h-fit">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant mb-4 flex items-center gap-2">
+          <SlidersHorizontal size={14} />
+          View Setup
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant mb-2">Density</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(['compact', 'standard', 'comfortable'] as Density[]).map(option => (
+                <button
+                  key={option}
+                  onClick={() => onDensityChange(option)}
+                  className={cn(
+                    'rounded-full px-2 py-2 text-[9px] font-black uppercase tracking-[0.12rem]',
+                    density === option ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant mb-2">Save Custom View</p>
+            <input
+              value={viewNameDraft}
+              onChange={event => onViewNameChange(event.target.value)}
+              placeholder="Example: Fall Rush Calls"
+              className="w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/40 border-none focus:ring-1 focus:ring-primary/40"
+            />
+          </div>
+          <button
+            onClick={onSaveView}
+            className="w-full bg-primary text-white rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2"
+          >
+            <Save size={14} />
+            Save View
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+};
+
+const TableToolbar = ({
+  selectedCount,
+  visibleCount,
+  allVisibleSelected,
+  saving,
+  onToggleAll,
+  onClear,
   onMarkChased
 }: {
-  view: RegistryView;
-  members: SecretaryMemberProfile[];
-  selectedMember: SecretaryMemberProfile | null;
-  savingId: string | null;
-  onSelect: (member: SecretaryMemberProfile) => void;
-  onMarkVerified: (member: SecretaryMemberProfile) => void;
-  onMarkChased: (member: SecretaryMemberProfile) => void;
+  selectedCount: number;
+  visibleCount: number;
+  allVisibleSelected: boolean;
+  saving: boolean;
+  onToggleAll: () => void;
+  onClear: () => void;
+  onMarkChased: () => void;
 }) => (
-  <div className="overflow-x-auto">
-    <table className="w-full min-w-[980px] text-left">
-      <thead className="bg-surface-container-lowest text-on-surface-variant">
-        <tr>
-          {getColumns(view).map(column => (
-            <th key={column} className="px-5 py-4 text-[10px] uppercase tracking-[0.18rem] font-black">
-              {column}
-            </th>
-          ))}
-          <th className="px-5 py-4 text-[10px] uppercase tracking-[0.18rem] font-black">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {members.map(member => (
-          <tr
-            key={member.id}
-            onClick={() => onSelect(member)}
-            className={cn(
-              'cursor-pointer transition-colors hover:bg-surface-container-high',
-              selectedMember?.id === member.id && 'bg-primary/10'
-            )}
-          >
-            {renderCells(view, member).map((cell, index) => (
-              <td key={`${member.id}-${index}`} className="px-5 py-4 text-sm text-on-surface align-top">
-                {cell}
-              </td>
-            ))}
-            <td className="px-5 py-4 align-top">
-              <div className="flex gap-2">
-                <button
-                  onClick={event => {
-                    event.stopPropagation();
-                    onMarkVerified(member);
-                  }}
-                  disabled={savingId === member.id}
-                  className="p-2 rounded-full bg-surface-container-lowest text-secondary hover:bg-secondary/10 disabled:opacity-40"
-                  title="Mark verified"
-                >
-                  {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                </button>
-                <button
-                  onClick={event => {
-                    event.stopPropagation();
-                    onMarkChased(member);
-                  }}
-                  disabled={savingId === member.id}
-                  className="p-2 rounded-full bg-surface-container-lowest text-primary hover:bg-primary/10 disabled:opacity-40"
-                  title="Mark chased"
-                >
-                  {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                </button>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-
-    {members.length === 0 && (
-      <div className="p-10 text-center text-on-surface-variant text-sm font-bold">
-        No records match this view.
+  <div className="bg-surface-container-lowest px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+    <button
+      onClick={onToggleAll}
+      className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface flex items-center gap-2"
+    >
+      {allVisibleSelected ? <CheckSquare size={15} /> : <Square size={15} />}
+      {selectedCount > 0 ? `${selectedCount} selected` : `${visibleCount} visible`}
+    </button>
+    {selectedCount > 0 && (
+      <div className="flex gap-2">
+        <button
+          onClick={onMarkChased}
+          disabled={saving}
+          className="bg-primary/10 text-primary rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center gap-2 disabled:opacity-50"
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          Mark Chased
+        </button>
+        <button
+          onClick={onClear}
+          className="bg-surface-container-high text-on-surface-variant rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.14rem]"
+        >
+          Clear
+        </button>
       </div>
     )}
   </div>
 );
+
+const RegistryTable = ({
+  columns,
+  members,
+  selectedMember,
+  selectedIds,
+  sort,
+  density,
+  savingId,
+  onSelect,
+  onToggleRow,
+  onSort,
+  onMarkVerified,
+  onMarkChased
+}: {
+  columns: RegistryColumn[];
+  members: SecretaryMemberProfile[];
+  selectedMember: SecretaryMemberProfile | null;
+  selectedIds: Set<string>;
+  sort: RegistrySort;
+  density: Density;
+  savingId: string | null;
+  onSelect: (member: SecretaryMemberProfile) => void;
+  onToggleRow: (memberId: string) => void;
+  onSort: (column: RegistryColumn) => void;
+  onMarkVerified: (member: SecretaryMemberProfile) => void;
+  onMarkChased: (member: SecretaryMemberProfile) => void;
+}) => {
+  const rowPadding = density === 'compact' ? 'px-4 py-3' : density === 'comfortable' ? 'px-5 py-5' : 'px-5 py-4';
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[1120px] text-left border-separate border-spacing-0">
+        <thead className="bg-surface-container-lowest text-on-surface-variant">
+          <tr>
+            <th className="sticky left-0 z-30 bg-surface-container-lowest px-4 py-4 w-12" />
+            {columns.map((column, index) => (
+              <th
+                key={column.key}
+                style={{ minWidth: column.minWidth }}
+                className={cn(
+                  'py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
+                  column.key === 'name' && 'sticky left-12 z-30 bg-surface-container-lowest shadow-[18px_0_28px_rgba(0,0,0,0.22)]',
+                  index === 0 ? 'px-4' : 'px-5'
+                )}
+              >
+                <button
+                  onClick={() => onSort(column)}
+                  disabled={!column.sortable}
+                  className={cn('flex items-center gap-2', column.sortable && 'hover:text-on-surface')}
+                >
+                  {column.label}
+                  {column.sortable && (
+                    <ArrowUpDown
+                      size={12}
+                      className={sort.column === column.key ? 'text-primary' : 'opacity-40'}
+                    />
+                  )}
+                </button>
+              </th>
+            ))}
+            <th className="px-5 py-4 text-[10px] uppercase tracking-[0.18rem] font-black">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {members.map(member => (
+            <tr
+              key={member.id}
+              onClick={() => onSelect(member)}
+              className={cn(
+                'cursor-pointer transition-colors hover:bg-surface-container-high',
+                selectedMember?.id === member.id && 'bg-primary/10'
+              )}
+            >
+              <td className={cn('sticky left-0 z-20 bg-inherit', rowPadding)}>
+                <button
+                  onClick={event => {
+                    event.stopPropagation();
+                    onToggleRow(member.id);
+                  }}
+                  className="text-on-surface-variant hover:text-on-surface"
+                  title="Select row"
+                >
+                  {selectedIds.has(member.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                </button>
+              </td>
+              {columns.map((column, index) => (
+                <td
+                  key={`${member.id}-${column.key}`}
+                  style={{ minWidth: column.minWidth }}
+                  className={cn(
+                    rowPadding,
+                    'text-sm text-on-surface align-top',
+                    column.key === 'name' && 'sticky left-12 z-20 bg-inherit shadow-[18px_0_28px_rgba(0,0,0,0.18)]',
+                    index === 0 ? 'px-4' : undefined
+                  )}
+                >
+                  {column.render(member)}
+                </td>
+              ))}
+              <td className={cn(rowPadding, 'align-top')}>
+                <div className="flex gap-2">
+                  <button
+                    onClick={event => {
+                      event.stopPropagation();
+                      onMarkVerified(member);
+                    }}
+                    disabled={savingId === member.id}
+                    className="p-2 rounded-full bg-surface-container-lowest text-secondary hover:bg-secondary/10 disabled:opacity-40"
+                    title="Mark verified"
+                  >
+                    {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  </button>
+                  <button
+                    onClick={event => {
+                      event.stopPropagation();
+                      onMarkChased(member);
+                    }}
+                    disabled={savingId === member.id}
+                    className="p-2 rounded-full bg-surface-container-lowest text-primary hover:bg-primary/10 disabled:opacity-40"
+                    title="Mark chased"
+                  >
+                    {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {members.length === 0 && (
+        <div className="p-10 text-center text-on-surface-variant text-sm font-bold">
+          No records match this view.
+        </div>
+      )}
+    </div>
+  );
+};
 
 const RegistryDrawer = ({
   member,
@@ -484,59 +1123,112 @@ const DetailRow = ({ label, value, icon }: { label: string; value?: string | nul
   </div>
 );
 
-const getColumns = (view: RegistryView) => {
-  if (view === 'contact') return ['Name', 'Phone', 'Google', 'Personal', 'Social', 'Status'];
-  if (view === 'missing') return ['Name', 'Missing', 'Fields', 'Phone', 'Last chased', 'Verified'];
-  if (view === 'family') return ['Name', 'Member phone', 'Guardian 1', 'Guardian 2', 'Emergency', 'Consent'];
-  return ['Name', 'Status', 'Grad term', 'Pledge class', 'School', 'Major', 'Missing'];
-};
+const COLUMN_GROUPS: ColumnGroup[] = ['Identity', 'Contact', 'Academic', 'Housing', 'Social', 'Hygiene', 'Family'];
 
-const renderCells = (view: RegistryView, member: SecretaryMemberProfile) => {
-  if (view === 'contact') {
-    return [
-      <NameCell member={member} />,
-      member.phone ?? 'Missing',
-      member.google_email,
-      member.personal_email ?? 'Missing',
-      [member.instagram, member.snapchat, member.linkedin].filter(Boolean).join(' · ') || 'Missing',
-      <StatusPill status={member.status} />
-    ];
+const REGISTRY_COLUMNS: RegistryColumn[] = [
+  {
+    key: 'name',
+    label: 'Name',
+    group: 'Identity',
+    minWidth: 220,
+    sortable: true,
+    render: member => <NameCell member={member} />,
+    exportValue: getDisplayName,
+    sortValue: member => getDisplayName(member).toLowerCase()
+  },
+  column('status', 'Status', 'Identity', 150, member => <StatusPill status={member.status} />, member => member.status, member => member.status),
+  column('suid', 'SUID', 'Identity', 120, member => member.suid, member => member.suid, member => member.suid),
+  column('phone', 'Phone', 'Contact', 150, member => member.phone ?? 'Missing', member => member.phone ?? '', member => member.phone),
+  column('google_email', 'Google Email', 'Contact', 240, member => member.google_email, member => member.google_email, member => member.google_email),
+  column('personal_email', 'Personal Email', 'Contact', 240, member => member.personal_email ?? 'Missing', member => member.personal_email ?? '', member => member.personal_email),
+  column('expected_graduation_term', 'Grad Term', 'Academic', 160, member => member.expected_graduation_term ?? String(member.graduation_year ?? 'Missing'), member => member.expected_graduation_term ?? '', member => member.expected_graduation_term ?? member.graduation_year),
+  column('graduation_year', 'Grad Year', 'Academic', 120, member => member.graduation_year ?? 'Missing', member => member.graduation_year ?? '', member => member.graduation_year),
+  column('pledge_class', 'Pledge Class', 'Academic', 160, member => member.pledge_class ?? 'Missing', member => member.pledge_class ?? '', member => member.pledge_class),
+  column('initiation_date', 'Initiation', 'Academic', 150, member => formatDate(member.initiation_date) ?? 'Missing', member => formatDate(member.initiation_date) ?? '', member => member.initiation_date),
+  column('school', 'School', 'Academic', 190, member => member.school ?? 'Missing', member => member.school ?? '', member => member.school),
+  column('major', 'Major', 'Academic', 190, member => member.major ?? 'Missing', member => member.major ?? '', member => member.major),
+  column('local_address', 'Local Address', 'Housing', 240, member => member.local_address ?? 'Missing', member => member.local_address ?? '', member => member.local_address),
+  column('campus_housing', 'Campus Housing', 'Housing', 170, member => member.campus_housing ?? 'Missing', member => member.campus_housing ?? '', member => member.campus_housing),
+  column('home', 'Home', 'Housing', 160, member => [member.home_city, member.home_state].filter(Boolean).join(', ') || 'Missing', member => [member.home_city, member.home_state].filter(Boolean).join(', '), member => `${member.home_state ?? ''} ${member.home_city ?? ''}`),
+  column('instagram', 'Instagram', 'Social', 150, member => member.instagram ?? 'Missing', member => member.instagram ?? '', member => member.instagram),
+  column('snapchat', 'Snapchat', 'Social', 150, member => member.snapchat ?? 'Missing', member => member.snapchat ?? '', member => member.snapchat),
+  column('linkedin', 'LinkedIn', 'Social', 170, member => member.linkedin ?? 'Missing', member => member.linkedin ?? '', member => member.linkedin),
+  {
+    key: 'missing_count',
+    label: 'Missing',
+    group: 'Hygiene',
+    minWidth: 120,
+    sortable: true,
+    render: member => (
+      <span className={member.missing_required_field_count > 0 ? 'font-black text-primary' : 'font-black text-secondary'}>
+        {member.missing_required_field_count}
+      </span>
+    ),
+    exportValue: member => member.missing_required_field_count,
+    sortValue: member => member.missing_required_field_count
+  },
+  column('missing_fields', 'Missing Fields', 'Hygiene', 280, member => member.missing_required_fields.slice(0, 5).map(formatLabel).join(', ') || 'Complete', member => member.missing_required_fields.map(formatLabel).join(', '), member => member.missing_required_fields.join(', ')),
+  column('last_verified_at', 'Verified', 'Hygiene', 160, member => formatDateTime(member.last_verified_at), member => formatDateTime(member.last_verified_at), member => member.last_verified_at),
+  column('last_chased_at', 'Chased', 'Hygiene', 160, member => formatDateTime(member.last_chased_at), member => formatDateTime(member.last_chased_at), member => member.last_chased_at),
+  familyColumn('guardian_1', 'Guardian 1', member => formatContact(member.guardian_1_name, member.guardian_1_relationship, member.guardian_1_phone, member.guardian_1_email)),
+  familyColumn('guardian_2', 'Guardian 2', member => formatContact(member.guardian_2_name, member.guardian_2_relationship, member.guardian_2_phone, member.guardian_2_email)),
+  familyColumn('emergency_contact', 'Emergency', member => formatContact(member.emergency_contact_name, member.emergency_contact_relationship, member.emergency_contact_phone, member.emergency_contact_email)),
+  {
+    key: 'parent_outreach_consent',
+    label: 'Parent Consent',
+    group: 'Family',
+    minWidth: 150,
+    sensitivity: 'family_contact',
+    sortable: true,
+    render: member => member.parent_outreach_consent ? 'Yes' : 'No',
+    exportValue: member => member.parent_outreach_consent ? 'Yes' : 'No',
+    sortValue: member => member.parent_outreach_consent ? 1 : 0
   }
+];
 
-  if (view === 'missing') {
-    return [
-      <NameCell member={member} />,
-      <span className="font-black text-primary">{member.missing_required_field_count}</span>,
-      <span className="text-on-surface-variant">{member.missing_required_fields.slice(0, 4).map(formatLabel).join(', ') || 'Complete'}</span>,
-      member.phone ?? 'Missing',
-      formatDateTime(member.last_chased_at),
-      formatDateTime(member.last_verified_at)
-    ];
-  }
+const COLUMN_BY_KEY = REGISTRY_COLUMNS.reduce((acc, columnDef) => {
+  acc[columnDef.key] = columnDef;
+  return acc;
+}, {} as Record<ColumnKey, RegistryColumn>);
 
-  if (view === 'family') {
-    return [
-      <NameCell member={member} />,
-      member.phone ?? 'Missing',
-      formatContact(member.guardian_1_name, member.guardian_1_relationship, member.guardian_1_phone, member.guardian_1_email),
-      formatContact(member.guardian_2_name, member.guardian_2_relationship, member.guardian_2_phone, member.guardian_2_email),
-      formatContact(member.emergency_contact_name, member.emergency_contact_relationship, member.emergency_contact_phone, member.emergency_contact_email),
-      member.parent_outreach_consent ? 'Yes' : 'No'
-    ];
-  }
+function column(
+  key: ColumnKey,
+  label: string,
+  group: ColumnGroup,
+  minWidth: number,
+  render: (member: SecretaryMemberProfile) => React.ReactNode,
+  exportValue: (member: SecretaryMemberProfile) => string | number,
+  sortValue?: (member: SecretaryMemberProfile) => string | number | null
+): RegistryColumn {
+  return {
+    key,
+    label,
+    group,
+    minWidth,
+    sortable: Boolean(sortValue),
+    render,
+    exportValue,
+    sortValue
+  };
+}
 
-  return [
-    <NameCell member={member} />,
-    <StatusPill status={member.status} />,
-    member.expected_graduation_term ?? String(member.graduation_year ?? 'Missing'),
-    member.pledge_class ?? 'Missing',
-    member.school ?? 'Missing',
-    member.major ?? 'Missing',
-    <span className={member.missing_required_field_count > 0 ? 'font-black text-primary' : 'text-secondary font-black'}>
-      {member.missing_required_field_count}
-    </span>
-  ];
-};
+function familyColumn(
+  key: ColumnKey,
+  label: string,
+  getValue: (member: SecretaryMemberProfile) => string
+): RegistryColumn {
+  return {
+    key,
+    label,
+    group: 'Family',
+    minWidth: 260,
+    sensitivity: 'family_contact',
+    sortable: true,
+    render: getValue,
+    exportValue: getValue,
+    sortValue: getValue
+  };
+}
 
 const NameCell = ({ member }: { member: SecretaryMemberProfile }) => (
   <div>
@@ -551,51 +1243,215 @@ const StatusPill = ({ status }: { status: string }) => (
   </span>
 );
 
-const getDisplayName = (member: SecretaryMemberProfile) =>
-  `${member.preferred_name || member.legal_first_name} ${member.legal_last_name}`;
+function matchesFilters(member: SecretaryMemberProfile, filters: RegistryFilters) {
+  if (filters.roster === 'active' && !['active', 'new_member'].includes(member.status)) return false;
+  if (filters.roster === 'missing' && member.missing_required_field_count === 0) return false;
+  if (filters.roster === 'status_watchlist' && ['active', 'new_member', 'alumni'].includes(member.status)) return false;
+  if (filters.status !== 'all' && member.status !== filters.status) return false;
+  if (filters.pledgeClass !== 'all' && member.pledge_class !== filters.pledgeClass) return false;
+  if (filters.school !== 'all' && member.school !== filters.school) return false;
 
-const getLegalName = (member: SecretaryMemberProfile) =>
-  `${member.legal_first_name} ${member.legal_last_name}`;
+  const gradTerm = member.expected_graduation_term ?? String(member.graduation_year ?? '');
+  if (filters.gradTerm !== 'all' && gradTerm !== filters.gradTerm) return false;
+  if (filters.missing === 'missing' && member.missing_required_field_count === 0) return false;
+  if (filters.missing === 'complete' && member.missing_required_field_count > 0) return false;
+  if (filters.verification === 'verified' && !member.last_verified_at) return false;
+  if (filters.verification === 'unverified' && member.last_verified_at) return false;
+  if (filters.verification === 'stale_30' && !isStaleVerification(member.last_verified_at)) return false;
 
-const formatLabel = (value: string) =>
-  value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+  return true;
+}
 
-const formatDate = (value?: string | null) => {
+function compareMembers(a: SecretaryMemberProfile, b: SecretaryMemberProfile, sort: RegistrySort) {
+  const columnDef = COLUMN_BY_KEY[sort.column] ?? COLUMN_BY_KEY.name;
+  const aValue = columnDef.sortValue?.(a) ?? columnDef.exportValue(a);
+  const bValue = columnDef.sortValue?.(b) ?? columnDef.exportValue(b);
+  const multiplier = sort.direction === 'asc' ? 1 : -1;
+
+  if (typeof aValue === 'number' && typeof bValue === 'number') {
+    return (aValue - bValue) * multiplier;
+  }
+
+  return String(aValue ?? '').localeCompare(String(bValue ?? ''), undefined, { numeric: true }) * multiplier;
+}
+
+function sanitizeColumns(columns: ColumnKey[]) {
+  const unique = [...new Set(['name' as ColumnKey, ...columns])];
+  return unique.filter(key => COLUMN_BY_KEY[key]);
+}
+
+function loadCustomViews(): RegistrySavedView[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_VIEWS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as RegistrySavedView[];
+    return parsed.map(view => ({
+      ...view,
+      columns: sanitizeColumns(view.columns),
+      filters: { ...DEFAULT_FILTERS, ...view.filters },
+      sort: COLUMN_BY_KEY[view.sort?.column] ? view.sort : INITIAL_VIEW.sort,
+      density: view.density ?? 'standard',
+      system: false
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function persistCustomViews(views: RegistrySavedView[]) {
+  localStorage.setItem(CUSTOM_VIEWS_STORAGE_KEY, JSON.stringify(views));
+}
+
+function uniqueOptions(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
+}
+
+function getDisplayName(member: SecretaryMemberProfile) {
+  return `${member.preferred_name || member.legal_first_name} ${member.legal_last_name}`;
+}
+
+function getLegalName(member: SecretaryMemberProfile) {
+  return `${member.legal_first_name} ${member.legal_last_name}`;
+}
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatDate(value?: string | null) {
   if (!value) return null;
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
-};
+}
 
-const formatDateTime = (value?: string | null) => {
+function formatDateTime(value?: string | null) {
   if (!value) return 'Missing';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value));
-};
+}
 
-const formatContact = (
+function formatFileDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function formatContact(
   name?: string | null,
   relationship?: string | null,
   phone?: string | null,
   email?: string | null
-) => {
+) {
   if (!name && !phone && !email) return 'Missing';
   return [name, relationship, phone, email].filter(Boolean).join(' · ');
-};
+}
 
-const toCsv = (rows: Record<string, string | number>[]) => {
-  if (rows.length === 0) return '';
-  const headers = Object.keys(rows[0]);
-  const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-  return [
-    headers.join(','),
-    ...rows.map(row => headers.map(header => escape(row[header])).join(','))
-  ].join('\n');
-};
+function isStaleVerification(value?: string | null) {
+  if (!value) return true;
+  const verifiedAt = new Date(value);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  return verifiedAt < cutoff;
+}
 
-const downloadText = (filename: string, text: string) => {
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+function buildExcelWorkbook({
+  rows,
+  columns,
+  viewLabel,
+  selectedOnly,
+  sensitive
+}: {
+  rows: SecretaryMemberProfile[];
+  columns: RegistryColumn[];
+  viewLabel: string;
+  selectedOnly: boolean;
+  sensitive: boolean;
+}) {
+  const now = new Date();
+  const columnXml = columns.map(columnDef => `<Column ss:Width="${Math.max(90, columnDef.minWidth * 0.75)}"/>`).join('');
+  const headerXml = columns.map(columnDef => cell(columnDef.label, 'Header')).join('');
+  const bodyXml = rows.map(member => {
+    const rowCells = columns.map(columnDef => {
+      const value = columnDef.exportValue(member);
+      const style = columnDef.key === 'missing_count' && Number(value) > 0
+        ? 'Warning'
+        : columnDef.sensitivity === 'family_contact'
+          ? 'Sensitive'
+          : 'Body';
+      return cell(value, style);
+    }).join('');
+    return `<Row>${rowCells}</Row>`;
+  }).join('');
+
+  const notesWorksheet = sensitive ? `
+    <Worksheet ss:Name="Export Notes">
+      <Table>
+        <Row>${cell('Sensitive Export Notice', 'Title')}</Row>
+        <Row>${cell('This workbook may include parent, guardian, or emergency contact data. Treat it as officer-only chapter records.', 'Body')}</Row>
+        <Row>${cell(`Generated: ${now.toLocaleString()}`, 'Body')}</Row>
+      </Table>
+    </Worksheet>
+  ` : '';
+
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#FFFFFF"/><Interior ss:Color="#7A1F2B" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Meta"><Font ss:Color="#D6C28A" ss:Bold="1"/><Interior ss:Color="#131313" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2A2A2A" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Body"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#F7F7F4" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Warning"><Font ss:Bold="1" ss:Color="#7A1F2B"/><Interior ss:Color="#F5E6E8" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Sensitive"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#FFF6D6" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="${escapeXml(toExcelSheetName(viewLabel))}">
+    <Table>
+      ${columnXml}
+      <Row>${cell(`Chapter Command Center - ${viewLabel}`, 'Title')}</Row>
+      <Row>${cell(`Generated ${now.toLocaleString()}${selectedOnly ? ' - selected rows only' : ''}`, 'Meta')}</Row>
+      <Row>${headerXml}</Row>
+      ${bodyXml}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>3</SplitHorizontal>
+      <TopRowBottomPane>3</TopRowBottomPane>
+      <ActivePane>2</ActivePane>
+    </WorksheetOptions>
+  </Worksheet>
+  ${notesWorksheet}
+</Workbook>`;
+}
+
+function cell(value: string | number, styleId: string) {
+  const type = typeof value === 'number' ? 'Number' : 'String';
+  return `<Cell ss:StyleID="${styleId}"><Data ss:Type="${type}">${escapeXml(String(value))}</Data></Cell>`;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'secretary-registry';
+}
+
+function toExcelSheetName(value: string) {
+  const sanitized = value.replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (sanitized || 'Registry').slice(0, 31);
+}
+
+function downloadWorkbook(filename: string, workbookXml: string) {
+  const blob = new Blob([workbookXml], { type: 'application/vnd.ms-excel;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-};
+}
