@@ -69,25 +69,6 @@ type MemberDirectoryViewRow = Omit<DirectoryMember, 'college'> & {
   college?: string | null;
 };
 
-type MemberBaseRow = {
-  id: string;
-  google_email: string;
-  personal_email: string | null;
-  legal_first_name: string;
-  legal_last_name: string;
-  preferred_name: string | null;
-  phone: string | null;
-  instagram: string | null;
-  snapchat: string | null;
-  linkedin: string | null;
-  status: DirectoryMemberStatus;
-  graduation_year: number | null;
-  college: string | null;
-  major: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type PositionHistoryRow = {
   id: string;
   semester: string | null;
@@ -132,58 +113,17 @@ const DIRECTORY_VIEW_SELECT = `
   updated_at
 `;
 
-const MEMBER_BASE_SELECT = `
-  id,
-  google_email,
-  personal_email,
-  legal_first_name,
-  legal_last_name,
-  preferred_name,
-  phone,
-  instagram,
-  snapchat,
-  linkedin,
-  status,
-  graduation_year,
-  college,
-  major,
-  created_at,
-  updated_at
-`;
-
 export const fetchMemberDirectory = async (): Promise<DirectoryMember[]> => {
-  const directoryResult = await supabase
+  const { data, error } = await supabase
     .from('member_directory_profiles')
     .select(DIRECTORY_VIEW_SELECT)
-    .order('legal_last_name', { ascending: true });
-
-  if (!directoryResult.error) {
-    return ((directoryResult.data ?? []) as MemberDirectoryViewRow[]).map(normalizeDirectoryMember);
-  }
-
-  const { data, error } = await supabase
-    .from('members')
-    .select(MEMBER_BASE_SELECT)
-    .in('status', ['active', 'new_member', 'alumni'])
     .order('legal_last_name', { ascending: true });
 
   if (error) {
     throw error;
   }
 
-  return ((data ?? []) as MemberBaseRow[]).map(row => normalizeDirectoryMember({
-    ...row,
-    school: row.college,
-    avatar_url: null,
-    pledge_class: null,
-    birthday_month: null,
-    birthday_day: null,
-    bio: null,
-    current_status_type: null,
-    current_status_label: null,
-    current_status_start_term: null,
-    current_status_end_term: null
-  }));
+  return ((data ?? []) as MemberDirectoryViewRow[]).map(normalizeDirectoryMember);
 };
 
 export const fetchMemberPositionHistory = async (memberId: string): Promise<DirectoryPosition[]> => {

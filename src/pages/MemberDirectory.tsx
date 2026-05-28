@@ -357,7 +357,9 @@ export const MemberDirectory = () => {
       {!loading && !error && (
         <section className="space-y-10">
           <div className="flex items-center justify-between">
-            <h2 className="text-4xl font-black tracking-tight text-on-surface">Active Roster</h2>
+            <h2 className="text-4xl font-black tracking-tight text-on-surface">
+              {tab === 'active' ? 'Active Roster' : 'Alumni Roster'}
+            </h2>
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2rem] text-on-surface-variant font-black">
               <SlidersHorizontal size={14} />
               {filteredMembers.length} shown
