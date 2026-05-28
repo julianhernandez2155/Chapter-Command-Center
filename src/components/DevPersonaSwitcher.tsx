@@ -16,7 +16,7 @@ const PERSONAS: Persona[] = [
   { name: 'Jack Rugarber', email: 'saa@g.syr.edu', role: 'Sergeant-at-Arms', color: 'from-rose-500/20 to-rose-600/20 border-rose-500/30 text-rose-200' },
   { name: 'Michael Ricci', email: 'chairman@g.syr.edu', role: 'Recruitment Chair', color: 'from-indigo-500/20 to-indigo-600/20 border-indigo-500/30 text-indigo-200' },
   { name: 'Sami Mulani', email: 'scholarship@g.syr.edu', role: 'Scholarship Chair', color: 'from-cyan-500/20 to-cyan-600/20 border-cyan-500/30 text-cyan-200' },
-  { name: 'Julian Vanguard', email: 'member@g.syr.edu', role: 'Standard Member', color: 'from-slate-500/20 to-slate-600/20 border-slate-500/30 text-slate-200' }
+  { name: 'Julian Hernandez', email: 'member@g.syr.edu', role: 'Standard Member', color: 'from-slate-500/20 to-slate-600/20 border-slate-500/30 text-slate-200' }
 ];
 
 export const DevPersonaSwitcher: React.FC = () => {
