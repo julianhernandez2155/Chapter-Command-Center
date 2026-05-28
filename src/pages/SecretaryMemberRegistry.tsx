@@ -678,7 +678,7 @@ const ViewDropdown = ({
     </button>
 
     {open && (
-      <div className="absolute left-0 top-14 z-40 w-80 bg-surface-container-lowest rounded-2xl p-3 shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
+      <div className="absolute left-0 top-14 z-[80] w-80 bg-surface-container-lowest rounded-2xl p-3 shadow-[0_24px_48px_rgba(0,0,0,0.45)]">
         <ViewGroup label="System Views">
           {systemViews.map(view => (
             <React.Fragment key={view.id}>
