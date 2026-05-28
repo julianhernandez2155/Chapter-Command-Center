@@ -23,6 +23,7 @@ export type Permission =
   | 'events.edit'
   | 'events.archive'
   | 'roster.view'
+  | 'roster.manage'
   | 'attendance.import'
   | 'forms.status.view'
   | 'forms.intake'
@@ -82,6 +83,7 @@ const CHAIRMAN_WORKFLOW_PERMISSIONS: Permission[] = [
 export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   president: [
     'roster.view',
+    'roster.manage',
     'positions.manage',
     'events.create',
     'events.edit',
@@ -93,6 +95,7 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   ],
   secretary: [
     'roster.view',
+    'roster.manage',
     'positions.manage',
     'events.create',
     'events.edit',

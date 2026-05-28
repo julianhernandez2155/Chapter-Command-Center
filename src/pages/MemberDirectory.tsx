@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   Cake,
@@ -10,29 +10,56 @@ import {
   Loader2,
   Mail,
   MessageCircle,
+  Pencil,
   Phone,
   Search,
+  Save,
   SlidersHorizontal,
   UserRound,
   X
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 import {
   DirectoryMember,
   DirectoryPosition,
   fetchMemberDirectory,
-  fetchMemberPositionHistory
+  fetchMemberPositionHistory,
+  updateMemberDirectoryProfile
 } from '../lib/memberDirectory';
 
 type MemberTab = 'active' | 'alumni';
 type SortMode = 'last_name' | 'first_name';
+type QuickRosterDraft = {
+  legal_first_name: string;
+  legal_last_name: string;
+  preferred_name: string;
+  personal_email: string;
+  phone: string;
+  instagram: string;
+  snapchat: string;
+  school: string;
+  major: string;
+  graduation_year: string;
+  avatar_url: string;
+  pledge_class: string;
+  member_since_term: string;
+  birthday_month: string;
+  birthday_day: string;
+  bio: string;
+};
 
 export const MemberDirectory = () => {
+  const { can } = useAuth();
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<DirectoryMember | null>(null);
+  const [editingMember, setEditingMember] = useState<DirectoryMember | null>(null);
+  const [quickDraft, setQuickDraft] = useState<QuickRosterDraft | null>(null);
   const [positions, setPositions] = useState<DirectoryPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [positionsLoading, setPositionsLoading] = useState(false);
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<MemberTab>('active');
   const [search, setSearch] = useState('');
@@ -42,38 +69,92 @@ export const MemberDirectory = () => {
   const [pledgeClass, setPledgeClass] = useState('all');
   const [groupByPledgeClass, setGroupByPledgeClass] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_name');
+  const canManageRoster = can('roster.manage');
+
+  const loadMembers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await fetchMemberDirectory();
+      setMembers(data);
+      setSelectedMember(current => {
+        if (current) {
+          return data.find(member => member.id === current.id) ?? current;
+        }
+
+        return data.find(member => isActiveRosterMember(member)) ?? data[0] ?? null;
+      });
+    } catch (err) {
+      console.error('Error loading member directory:', err);
+      setError('Unable to load the live member directory.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadMembers = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const data = await fetchMemberDirectory();
-        if (isMounted) {
-          setMembers(data);
-          setSelectedMember(data.find(member => isActiveRosterMember(member)) ?? data[0] ?? null);
-        }
-      } catch (err) {
-        console.error('Error loading member directory:', err);
-        if (isMounted) {
-          setError('Unable to load the live member directory.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
     void loadMembers();
+  }, [loadMembers]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const openQuickEditor = (member: DirectoryMember | null = selectedMember) => {
+    const target = member ?? members.find(isActiveRosterMember) ?? members[0] ?? null;
+    if (!target) return;
+
+    setEditingMember(target);
+    setQuickDraft(createQuickDraft(target));
+    setQuickError(null);
+  };
+
+  const saveQuickEditor = async () => {
+    if (!editingMember || !quickDraft) return;
+
+    setQuickSaving(true);
+    setQuickError(null);
+
+    try {
+      await updateMemberDirectoryProfile(editingMember.id, {
+        legal_first_name: requiredText(quickDraft.legal_first_name, editingMember.legal_first_name),
+        legal_last_name: requiredText(quickDraft.legal_last_name, editingMember.legal_last_name),
+        preferred_name: nullableText(quickDraft.preferred_name),
+        personal_email: nullableText(quickDraft.personal_email),
+        phone: nullableText(quickDraft.phone),
+        instagram: nullableText(quickDraft.instagram),
+        snapchat: nullableText(quickDraft.snapchat),
+        school: nullableText(quickDraft.school),
+        major: requiredText(quickDraft.major, editingMember.major ?? 'Undeclared'),
+        graduation_year: parseRequiredYear(quickDraft.graduation_year, editingMember.graduation_year),
+        avatar_url: nullableText(quickDraft.avatar_url),
+        pledge_class: nullableText(quickDraft.pledge_class),
+        member_since_term: nullableText(quickDraft.member_since_term),
+        birthday_month: parseNullableNumber(quickDraft.birthday_month),
+        birthday_day: parseNullableNumber(quickDraft.birthday_day),
+        bio: nullableText(quickDraft.bio)
+      });
+
+      await loadMembers();
+      setEditingMember(null);
+      setQuickDraft(null);
+    } catch (err) {
+      console.error('Error saving quick roster data:', err);
+      setQuickError(err instanceof Error ? err.message : 'Unable to save member data.');
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const updateQuickDraft = (field: keyof QuickRosterDraft, value: string) => {
+    setQuickDraft(current => current ? { ...current, [field]: value } : current);
+  };
+
+  const chooseQuickEditorMember = (memberId: string) => {
+    const nextMember = members.find(member => member.id === memberId);
+    if (nextMember) {
+      setEditingMember(nextMember);
+      setQuickDraft(createQuickDraft(nextMember));
+      setQuickError(null);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -163,15 +244,26 @@ export const MemberDirectory = () => {
             </p>
           </div>
 
-          <label className="bg-surface-container-lowest rounded-full px-5 py-3 flex items-center gap-3 text-on-surface-variant w-full xl:w-96 focus-within:ring-1 focus-within:ring-primary/40">
-            <Search size={18} />
-            <input
-              className="bg-transparent border-none focus:ring-0 p-0 text-sm w-full placeholder:text-on-surface-variant/40"
-              placeholder="Search name, school, major, phone last 4..."
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-            />
-          </label>
+          <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+            {canManageRoster && (
+              <button
+                onClick={() => openQuickEditor()}
+                className="bg-primary text-white px-5 py-3 rounded-full font-black uppercase tracking-[0.16rem] text-[11px] flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+              >
+                <Pencil size={15} />
+                Quick Data Entry
+              </button>
+            )}
+            <label className="bg-surface-container-lowest rounded-full px-5 py-3 flex items-center gap-3 text-on-surface-variant w-full sm:w-96 focus-within:ring-1 focus-within:ring-primary/40">
+              <Search size={18} />
+              <input
+                className="bg-transparent border-none focus:ring-0 p-0 text-sm w-full placeholder:text-on-surface-variant/40"
+                placeholder="Search name, school, major, phone last 4..."
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-6">
@@ -297,9 +389,163 @@ export const MemberDirectory = () => {
         loadingPositions={positionsLoading}
         onClose={() => setSelectedMember(null)}
       />
+
+      {canManageRoster && (
+        <QuickRosterEditor
+          members={members}
+          member={editingMember}
+          draft={quickDraft}
+          saving={quickSaving}
+          error={quickError}
+          onSelectMember={chooseQuickEditorMember}
+          onChange={updateQuickDraft}
+          onSave={saveQuickEditor}
+          onClose={() => {
+            setEditingMember(null);
+            setQuickDraft(null);
+            setQuickError(null);
+          }}
+        />
+      )}
     </div>
   );
 };
+
+const QuickRosterEditor = ({
+  members,
+  member,
+  draft,
+  saving,
+  error,
+  onSelectMember,
+  onChange,
+  onSave,
+  onClose
+}: {
+  members: DirectoryMember[];
+  member: DirectoryMember | null;
+  draft: QuickRosterDraft | null;
+  saving: boolean;
+  error: string | null;
+  onSelectMember: (memberId: string) => void;
+  onChange: (field: keyof QuickRosterDraft, value: string) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) => (
+  <div
+    className={cn(
+      "fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm transition-opacity",
+      member && draft ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+    )}
+  >
+    {member && draft && (
+      <div className="absolute inset-x-4 top-8 mx-auto max-w-5xl max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-2xl">
+        <div className="sticky top-0 z-10 bg-surface-container-lowest/95 backdrop-blur-xl p-6 border-b border-outline-variant/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.24rem] text-primary font-black mb-2">Temporary Roster Editor</p>
+            <h2 className="text-3xl font-black tracking-tight text-on-surface">Quick Data Entry</h2>
+            <p className="text-sm text-on-surface-variant mt-1">Officer-only helper for filling live member directory fields.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <select
+              value={member.id}
+              onChange={event => onSelectMember(event.target.value)}
+              className="bg-surface-container-high border-none rounded-lg text-sm text-on-surface font-semibold py-3 px-4 focus:ring-1 focus:ring-primary min-w-64"
+            >
+              {members.map(option => (
+                <option key={option.id} value={option.id}>{getCardName(option)}</option>
+              ))}
+            </select>
+            <button
+              onClick={onClose}
+              className="w-11 h-11 rounded-full bg-surface-container-high text-on-surface-variant hover:text-primary flex items-center justify-center"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-6 mt-6 rounded-xl bg-error/10 border border-error/20 p-4 text-sm text-error font-bold">
+            {error}
+          </div>
+        )}
+
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <QuickField label="Legal First" value={draft.legal_first_name} onChange={value => onChange('legal_first_name', value)} />
+          <QuickField label="Legal Last" value={draft.legal_last_name} onChange={value => onChange('legal_last_name', value)} />
+          <QuickField label="Preferred Name" value={draft.preferred_name} onChange={value => onChange('preferred_name', value)} />
+          <QuickField label="Personal Email" value={draft.personal_email} onChange={value => onChange('personal_email', value)} />
+          <QuickField label="Phone" value={draft.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
+          <QuickField label="Instagram" value={draft.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
+          <QuickField label="Snapchat" value={draft.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
+          <QuickField label="School" value={draft.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
+          <QuickField label="Major" value={draft.major} onChange={value => onChange('major', value)} />
+          <QuickField label="Class Year" value={draft.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
+          <QuickField label="Pledge Class" value={draft.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
+          <QuickField label="Member Since" value={draft.member_since_term} onChange={value => onChange('member_since_term', value)} placeholder="Spring 2027" />
+          <QuickField label="Birthday Month" value={draft.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
+          <QuickField label="Birthday Day" value={draft.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
+          <QuickField label="Avatar URL" value={draft.avatar_url} onChange={value => onChange('avatar_url', value)} />
+          <div className="md:col-span-2 xl:col-span-3">
+            <QuickField label="Bio" value={draft.bio} onChange={value => onChange('bio', value)} textarea />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-surface-container-lowest/95 backdrop-blur-xl p-6 border-t border-outline-variant/10 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-5 py-3 rounded-full bg-surface-container-high text-on-surface-variant font-black uppercase tracking-[0.16rem] text-[11px] hover:text-on-surface"
+          >
+            Close
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="px-5 py-3 rounded-full bg-primary text-white font-black uppercase tracking-[0.16rem] text-[11px] flex items-center gap-2 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+            Save Member
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+const QuickField = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  textarea = false
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  textarea?: boolean;
+}) => (
+  <label className="flex flex-col gap-2">
+    <span className="text-[10px] uppercase tracking-[0.18rem] text-on-surface-variant font-black">{label}</span>
+    {textarea ? (
+      <textarea
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant/35 focus:ring-1 focus:ring-primary resize-none"
+      />
+    ) : (
+      <input
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="bg-surface-container-high border-none rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant/35 focus:ring-1 focus:ring-primary"
+      />
+    )}
+  </label>
+);
 
 const FilterBar = ({
   classYear,
@@ -628,6 +874,48 @@ const PositionTimelineItem = ({ position }: { position: DirectoryPosition }) => 
 
 const uniqueOptions = (values: Array<string | null | undefined>) =>
   [...new Set(values.filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
+
+const createQuickDraft = (member: DirectoryMember): QuickRosterDraft => ({
+  legal_first_name: member.legal_first_name ?? '',
+  legal_last_name: member.legal_last_name ?? '',
+  preferred_name: member.preferred_name ?? '',
+  personal_email: member.personal_email ?? '',
+  phone: member.phone ?? '',
+  instagram: member.instagram ?? '',
+  snapchat: member.snapchat ?? '',
+  school: getSchool(member) ?? '',
+  major: member.major ?? '',
+  graduation_year: member.graduation_year ? String(member.graduation_year) : '',
+  avatar_url: member.avatar_url ?? '',
+  pledge_class: member.pledge_class ?? '',
+  member_since_term: member.member_since_term ?? '',
+  birthday_month: member.birthday_month ? String(member.birthday_month) : '',
+  birthday_day: member.birthday_day ? String(member.birthday_day) : '',
+  bio: member.bio ?? ''
+});
+
+const nullableText = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const requiredText = (value: string, fallback: string) => {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+};
+
+const parseRequiredYear = (value: string, fallback: number | null) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback ?? new Date().getFullYear();
+};
+
+const parseNullableNumber = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const isActiveRosterMember = (member: DirectoryMember) =>
   ['active', 'new_member'].includes(member.status);

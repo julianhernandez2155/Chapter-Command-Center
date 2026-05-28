@@ -39,6 +39,26 @@ export interface DirectoryPosition {
   removed_at: string | null;
 }
 
+export type MemberDirectoryProfileUpdate = Partial<Pick<
+  DirectoryMember,
+  | 'legal_first_name'
+  | 'legal_last_name'
+  | 'preferred_name'
+  | 'personal_email'
+  | 'phone'
+  | 'instagram'
+  | 'snapchat'
+  | 'school'
+  | 'major'
+  | 'graduation_year'
+  | 'avatar_url'
+  | 'pledge_class'
+  | 'member_since_term'
+  | 'birthday_month'
+  | 'birthday_day'
+  | 'bio'
+>>;
+
 type MemberDirectoryViewRow = Omit<DirectoryMember, 'college'> & {
   college?: string | null;
 };
@@ -184,6 +204,20 @@ export const fetchMemberPositionHistory = async (memberId: string): Promise<Dire
       removed_at: row.removed_at
     }];
   });
+};
+
+export const updateMemberDirectoryProfile = async (
+  memberId: string,
+  values: MemberDirectoryProfileUpdate
+) => {
+  const { error } = await supabase
+    .from('members')
+    .update(values)
+    .eq('id', memberId);
+
+  if (error) {
+    throw error;
+  }
 };
 
 const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember => ({
