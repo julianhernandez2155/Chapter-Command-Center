@@ -14,7 +14,9 @@ import {
   GraduationCap,
   Loader2,
   Mail,
+  MessageSquare,
   Phone,
+  Pencil,
   Save,
   Search,
   ShieldCheck,
@@ -1921,10 +1923,12 @@ const VerificationReviewDetail = ({
 }) => {
   const noteCount = Object.values(fieldNotes).filter(note => note.trim().length > 0).length;
   const sections = groupReviewFieldsBySection(fields, fieldNotes);
+  const missingCount = fields.filter(field => field.required && field.missing).length;
+  const flagCount = activeReview?.submission.optional_review_flags.length ?? 0;
 
   return (
   <div className="space-y-4">
-    <div className="bg-surface-container-low rounded-2xl p-5">
+    <div className="bg-surface-container-low rounded-2xl p-4">
       {!activeReview ? (
         <div className="min-h-64 flex items-center justify-center text-center text-on-surface-variant">
           <div>
@@ -1935,22 +1939,44 @@ const VerificationReviewDetail = ({
         </div>
       ) : (
         <>
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Current Review</p>
-              <h4 className="mt-1 text-2xl font-black text-on-surface">{getDisplayName(activeReview.member)}</h4>
-              <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                Inspect the profile, edit obvious fixes, or tag exact fields to send back.
-              </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Profile Inspection</p>
+              <h4 className="mt-1 text-3xl font-black text-on-surface">{getDisplayName(activeReview.member)}</h4>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <InspectionChip tone={missingCount > 0 ? 'error' : 'quiet'} label={`${missingCount} missing`} />
+                <InspectionChip tone={flagCount > 0 ? 'primary' : 'quiet'} label={`${flagCount} ${flagCount === 1 ? 'flag' : 'flags'}`} />
+                <InspectionChip tone={noteCount > 0 ? 'error' : 'quiet'} label={`${noteCount} ${noteCount === 1 ? 'note' : 'notes'}`} />
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={onSkip}
-              disabled={savingId === activeReview.submission.id}
-              className="rounded-full bg-surface-container-lowest text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] hover:bg-surface-container-high disabled:opacity-50"
-            >
-              Skip
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onApprove}
+                disabled={savingId === activeReview.submission.id}
+                className="rounded-full bg-secondary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={onRequestChanges}
+                disabled={savingId === activeReview.submission.id}
+                className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <AlertCircle size={14} />}
+                Request{noteCount > 0 ? ` (${noteCount})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={onSkip}
+                disabled={savingId === activeReview.submission.id}
+                className="rounded-full bg-surface-container-lowest text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] hover:bg-surface-container-high disabled:opacity-50"
+              >
+                Skip
+              </button>
+            </div>
           </div>
 
           {activeReview.submission.correction_notes && (
@@ -1960,44 +1986,28 @@ const VerificationReviewDetail = ({
             </div>
           )}
 
-          {(activeReview.submission.optional_review_flags.length > 0 || activeReview.submission.needs_changes_note || noteCount > 0) && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {noteCount > 0 && (
-                <span className="rounded-full bg-error/10 text-error px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
-                  {noteCount} field {noteCount === 1 ? 'note' : 'notes'}
-                </span>
-              )}
-              {activeReview.submission.optional_review_flags.map(flag => (
-                <span key={flag} className="rounded-full bg-primary/10 text-primary px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
-                  {formatLabel(flag)}
-                </span>
-              ))}
-              {activeReview.submission.needs_changes_note && (
-                <span className="rounded-full bg-error/10 text-error px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
-                  Previous changes requested
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="mt-6 space-y-6">
+          <div className="mt-5 space-y-4">
             {sections.map(section => (
-              <section key={section.group} className="bg-surface-container-lowest rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
+              <section key={section.group} className="overflow-hidden rounded-2xl bg-surface-container-lowest">
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-secondary">{section.group}</p>
                     <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                      {section.completeCount}/{section.fields.length} filled · {section.noteCount} notes
+                      {section.completeCount}/{section.fields.length} filled
                     </p>
                   </div>
-                  <span className={cn(
-                    'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]',
-                    section.noteCount > 0 ? 'bg-error/10 text-error' : section.completeCount === section.fields.length ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'
-                  )}>
-                    {section.noteCount > 0 ? 'Needs member' : section.completeCount === section.fields.length ? 'Looks filled' : 'Check blanks'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {section.noteCount > 0 && <InspectionChip tone="error" label={`${section.noteCount} notes`} />}
+                    {section.missingCount > 0 && <InspectionChip tone="primary" label={`${section.missingCount} missing`} />}
+                  </div>
                 </div>
-                <div className="space-y-2">
+                <div className="bg-surface-container-low/55 px-4 py-2 hidden lg:grid grid-cols-[180px_minmax(0,1fr)_90px_76px] gap-3 text-[9px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
+                  <span>Field</span>
+                  <span>Value</span>
+                  <span>Status</span>
+                  <span className="text-right">Actions</span>
+                </div>
+                <div className="space-y-1 px-2 pb-2">
                   {section.fields.map(field => (
                     <VerificationReviewFieldRow
                       key={field.key}
@@ -2014,25 +2024,7 @@ const VerificationReviewDetail = ({
           </div>
           {reviewError && <p className="mt-2 text-xs font-bold text-error">{reviewError}</p>}
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={onApprove}
-              disabled={savingId === activeReview.submission.id}
-              className="rounded-full bg-secondary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              Approve
-            </button>
-            <button
-              type="button"
-              onClick={onRequestChanges}
-              disabled={savingId === activeReview.submission.id}
-              className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <AlertCircle size={14} />}
-              Request Changes{noteCount > 0 ? ` (${noteCount})` : ''}
-            </button>
+          <div className="mt-4 flex justify-end">
             <button
               type="button"
               onClick={onExempt}
@@ -2101,19 +2093,21 @@ const VerificationReviewFieldRow = ({
 
   return (
     <div className={cn(
-      'rounded-xl px-4 py-3 text-sm',
-      note ? 'bg-error/10' : field.required && field.missing ? 'bg-primary/10' : 'bg-surface-container-low'
+      'group rounded-xl px-3 py-2 text-sm transition-colors',
+      note ? 'bg-error/10' : field.required && field.missing ? 'bg-primary/10' : 'bg-surface-container-low hover:bg-surface-container-high/60'
     )}>
-      <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)_auto] gap-3 lg:items-start">
-        <div>
-          <p className="font-black text-on-surface">{field.label}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant mt-1">
-            {field.required ? 'Required' : 'Optional'}
-            {field.missing ? ' · Missing' : ''}
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[180px_minmax(0,1fr)_90px_76px] lg:items-center lg:gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-black text-on-surface">
+            {field.label}
+            {field.required && <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Required" />}
+          </p>
+          <p className="mt-0.5 text-[10px] font-bold text-on-surface-variant lg:hidden">
+            {getReviewFieldStatus(field, note)}
           </p>
         </div>
 
-        <div>
+        <div className="min-w-0">
           {editing && field.editable ? (
             <div className="flex items-center gap-2">
               {field.inputType === 'checkbox' ? (
@@ -2133,7 +2127,7 @@ const VerificationReviewFieldRow = ({
                   type={field.inputType}
                   value={String(draft)}
                   onChange={event => setDraft(event.target.value)}
-                  className="min-w-0 flex-1 bg-surface-container-lowest rounded-xl px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+                  className="min-w-0 flex-1 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
                   autoFocus
                 />
               )}
@@ -2144,7 +2138,7 @@ const VerificationReviewFieldRow = ({
                   setEditing(false);
                 }}
                 disabled={saving || !valueChanged}
-                className="min-h-10 min-w-10 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40"
+                className="min-h-9 min-w-9 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40"
                 title="Save field"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -2154,23 +2148,41 @@ const VerificationReviewFieldRow = ({
             <button
               type="button"
               onClick={() => field.editable && setEditing(true)}
-              className="text-left w-full rounded-xl bg-surface-container-lowest px-3 py-2 font-semibold text-on-surface hover:bg-surface-container-high transition-colors"
+              className={cn(
+                'w-full rounded-lg px-2 py-1.5 text-left font-semibold transition-colors',
+                field.missing ? 'text-on-surface-variant' : 'text-on-surface',
+                field.editable && 'hover:bg-surface-container-lowest'
+              )}
             >
               {formatReviewFieldValue(field)}
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden lg:block">
+          <ReviewStatusPill field={field} note={note} />
+        </div>
+
+        <div className="flex items-center justify-start gap-1 lg:justify-end">
+          <button
+            type="button"
+            onClick={() => setEditing(current => !current)}
+            disabled={!field.editable}
+            className="flex min-h-9 min-w-9 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface-variant opacity-100 transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-30 lg:opacity-40 lg:group-hover:opacity-100 lg:focus:opacity-100"
+            title="Edit field"
+          >
+            <Pencil size={14} />
+          </button>
           <button
             type="button"
             onClick={() => setNoting(current => !current)}
             className={cn(
-              'min-h-10 rounded-full px-3 text-[10px] font-black uppercase tracking-[0.12rem] transition-colors',
-              note ? 'bg-error text-white' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high'
+              'flex min-h-9 min-w-9 items-center justify-center rounded-full transition-colors',
+              note ? 'bg-error text-white' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface lg:opacity-40 lg:group-hover:opacity-100 lg:focus:opacity-100'
             )}
+            title={note ? 'Edit note' : 'Add note'}
           >
-            {note ? 'Note added' : 'Add note'}
+            <MessageSquare size={14} />
           </button>
         </div>
       </div>
@@ -2189,6 +2201,33 @@ const VerificationReviewFieldRow = ({
       )}
 
       </div>
+  );
+};
+
+const InspectionChip = ({ tone, label }: { tone: 'quiet' | 'primary' | 'error'; label: string }) => (
+  <span className={cn(
+    'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]',
+    tone === 'error' && 'bg-error/10 text-error',
+    tone === 'primary' && 'bg-primary/10 text-primary',
+    tone === 'quiet' && 'bg-surface-container-lowest text-on-surface-variant'
+  )}>
+    {label}
+  </span>
+);
+
+const ReviewStatusPill = ({ field, note }: { field: VerificationReviewField; note: string }) => {
+  const status = getReviewFieldStatus(field, note);
+  const tone = note ? 'error' : field.required && field.missing ? 'primary' : field.flagged ? 'primary' : 'quiet';
+
+  return (
+    <span className={cn(
+      'inline-flex rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08rem]',
+      tone === 'error' && 'bg-error/10 text-error',
+      tone === 'primary' && 'bg-primary/10 text-primary',
+      tone === 'quiet' && 'bg-surface-container-lowest text-on-surface-variant'
+    )}>
+      {status}
+    </span>
   );
 };
 
@@ -2941,6 +2980,7 @@ function groupReviewFieldsBySection(fields: VerificationReviewField[], fieldNote
         group: group === 'Sizes' ? 'Apparel' : group,
         fields: sectionFields,
         completeCount: sectionFields.filter(field => !field.missing).length,
+        missingCount: sectionFields.filter(field => field.required && field.missing).length,
         noteCount: sectionFields.filter(field => Boolean(fieldNotes[field.key]?.trim())).length
       };
     })
@@ -2949,6 +2989,13 @@ function groupReviewFieldsBySection(fields: VerificationReviewField[], fieldNote
 
 function countReviewFieldNotes(submission: VerificationSubmission) {
   return Object.values(submission.needs_changes_field_notes ?? {}).filter(note => note.trim().length > 0).length;
+}
+
+function getReviewFieldStatus(field: VerificationReviewField, note: string) {
+  if (note.trim()) return 'Note';
+  if (field.required && field.missing) return 'Missing';
+  if (field.flagged) return 'Flag';
+  return 'OK';
 }
 
 function getSnapshotValue(snapshot: Record<string, unknown>, key: string) {
