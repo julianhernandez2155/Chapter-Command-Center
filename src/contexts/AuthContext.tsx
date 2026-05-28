@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Permission, getPermissionsForPositions, hasAnyPermission, hasPermission } from '../lib/permissions';
 import { LivePosition, fetchCurrentMemberPositions } from '../lib/roster';
+import { VerificationGateStatus, fetchMyVerificationGateStatus } from '../lib/memberVerification';
 
 export interface MemberProfile {
   id: string;
@@ -44,12 +45,15 @@ interface AuthContextType {
   roles: string[];
   positions: LivePosition[];
   permissions: Permission[];
+  verificationStatus: VerificationGateStatus | null;
+  verificationError: Error | null;
   loading: boolean;
   can: (permission: Permission) => boolean;
   canAny: (permissions: Permission[]) => boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
+  refreshVerificationStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -76,6 +80,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [positions, setPositions] = useState<LivePosition[]>([]);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationGateStatus | null>(null);
+  const [verificationError, setVerificationError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const userRef = useRef<User | null>(null);
   const memberRef = useRef<MemberProfile | null>(null);
@@ -93,6 +99,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMember(null);
     setRoles([]);
     setPositions([]);
+    setVerificationStatus(null);
+    setVerificationError(null);
   };
 
   const beginUserSession = (currentUser: User) => {
@@ -134,6 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setMember(memberData);
 
       if (memberData) {
+        try {
+          const gateStatus = await fetchMyVerificationGateStatus();
+          if (!isCurrentLoad()) return;
+          setVerificationStatus(gateStatus);
+          setVerificationError(null);
+        } catch (verificationLoadError) {
+          if (!isCurrentLoad()) return;
+          console.error('Error fetching verification gate status:', verificationLoadError);
+          setVerificationStatus(null);
+          setVerificationError(verificationLoadError as Error);
+        }
+
         // 2. Fetch roles using user_positions RPC
         const { data: rolesData, error: rolesError } = await supabase
           .rpc('user_positions');
@@ -253,29 +273,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     return { error: error as Error | null };
-  };
+  }, []);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (user) {
       const loadId = beginUserSession(user);
       await fetchProfileAndRoles(user, loadId);
     }
-  };
+  }, [user]);
+
+  const refreshVerificationStatus = useCallback(async () => {
+    if (!memberRef.current) {
+      setVerificationStatus(null);
+      setVerificationError(null);
+      return;
+    }
+
+    try {
+      const gateStatus = await fetchMyVerificationGateStatus();
+      setVerificationStatus(gateStatus);
+      setVerificationError(null);
+    } catch (err) {
+      console.error('Error refreshing verification gate status:', err);
+      setVerificationError(err as Error);
+    }
+  }, []);
 
   const permissions = useMemo(() => getPermissionsForPositions(roles), [roles]);
   const can = (permission: Permission) => hasPermission(permissions, permission);
   const canAny = (requiredPermissions: Permission[]) => hasAnyPermission(permissions, requiredPermissions);
 
   return (
-    <AuthContext.Provider value={{ user, member, roles, positions, permissions, loading, can, canAny, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, member, roles, positions, permissions, verificationStatus, verificationError, loading, can, canAny, signIn, signOut, refreshProfile, refreshVerificationStatus }}>
       {children}
     </AuthContext.Provider>
   );

@@ -27,6 +27,7 @@ import {
   X
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 import {
   SecretaryMemberProfile,
   createSecretaryChaseBatch,
@@ -34,6 +35,15 @@ import {
   markSecretaryProfileChased,
   markSecretaryProfileVerified
 } from '../lib/memberSecretaryRegistry';
+import {
+  VerificationCycle,
+  VerificationSubmission,
+  approveVerificationSubmission,
+  closeVerificationCycle,
+  fetchActiveVerificationCycle,
+  fetchVerificationSubmissions,
+  launchVerificationCycle
+} from '../lib/memberVerification';
 
 type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
 type Density = 'compact' | 'standard' | 'comfortable';
@@ -114,6 +124,15 @@ interface RegistrySavedView {
   density: Density;
   system?: boolean;
   sensitive?: boolean;
+}
+
+interface VerificationCycleStats {
+  completeCount: number;
+  openCount: number;
+  notStartedCount: number;
+  inProgressCount: number;
+  needsReviewCount: number;
+  optionalFlagCount: number;
 }
 
 interface ChaseComposer {
@@ -247,6 +266,7 @@ const EXPORT_PRESETS: Array<{
 ];
 
 export const SecretaryMemberRegistry = () => {
+  const { member: currentMember } = useAuth();
   const [members, setMembers] = useState<SecretaryMemberProfile[]>([]);
   const [selectedMember, setSelectedMember] = useState<SecretaryMemberProfile | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -267,6 +287,8 @@ export const SecretaryMemberRegistry = () => {
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowKey>('verification');
   const [copiedComposerField, setCopiedComposerField] = useState<string | null>(null);
   const [lastChaseBatchId, setLastChaseBatchId] = useState<string | null>(null);
+  const [activeVerificationCycle, setActiveVerificationCycle] = useState<VerificationCycle | null>(null);
+  const [verificationSubmissions, setVerificationSubmissions] = useState<VerificationSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -306,9 +328,26 @@ export const SecretaryMemberRegistry = () => {
     }
   }, []);
 
+  const loadVerificationCycle = useCallback(async () => {
+    try {
+      const cycle = await fetchActiveVerificationCycle();
+      setActiveVerificationCycle(cycle);
+
+      if (cycle) {
+        setVerificationSubmissions(await fetchVerificationSubmissions(cycle.id));
+      } else {
+        setVerificationSubmissions([]);
+      }
+    } catch (err) {
+      console.error('Error loading verification cycle:', err);
+      setError(err instanceof Error ? err.message : 'Unable to load verification cycle.');
+    }
+  }, []);
+
   useEffect(() => {
     void loadMembers();
-  }, [loadMembers]);
+    void loadVerificationCycle();
+  }, [loadMembers, loadVerificationCycle]);
 
   useEffect(() => {
     persistCustomViews(customViews);
@@ -368,6 +407,10 @@ export const SecretaryMemberRegistry = () => {
 
   const verificationDueMembers = useMemo(
     () => members.filter(member => isStaleVerification(member.last_verified_at)),
+    [members]
+  );
+  const activeMembers = useMemo(
+    () => members.filter(member => member.status === 'active'),
     [members]
   );
   const missingInfoMembers = useMemo(
@@ -517,6 +560,60 @@ export const SecretaryMemberRegistry = () => {
     } catch (err) {
       console.error('Unable to mark registry profile verified:', err);
       setError(err instanceof Error ? err.message : 'Unable to mark verified.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const launchSemesterVerification = async (termLabel: string, dueDate: string) => {
+    if (!currentMember) {
+      setError('Unable to launch verification without an active Secretary profile.');
+      return;
+    }
+
+    setSavingId('verification-cycle');
+    try {
+      await launchVerificationCycle({
+        termLabel,
+        dueAt: dueDate ? new Date(`${dueDate}T23:59:59`).toISOString() : null,
+        launchedBy: currentMember.id,
+        activeMemberIds: activeMembers.map(member => member.id)
+      });
+      await loadVerificationCycle();
+    } catch (err) {
+      console.error('Unable to launch semester verification:', err);
+      setError(err instanceof Error ? err.message : 'Unable to launch semester verification.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const closeSemesterVerification = async () => {
+    if (!currentMember || !activeVerificationCycle) return;
+
+    setSavingId('verification-cycle');
+    try {
+      await closeVerificationCycle(activeVerificationCycle.id, currentMember.id);
+      await loadVerificationCycle();
+    } catch (err) {
+      console.error('Unable to close semester verification:', err);
+      setError(err instanceof Error ? err.message : 'Unable to close semester verification.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const approveSubmittedVerification = async (submissionId: string) => {
+    if (!currentMember) return;
+
+    setSavingId(submissionId);
+    try {
+      await approveVerificationSubmission(submissionId, currentMember.id);
+      await loadVerificationCycle();
+      await loadMembers();
+    } catch (err) {
+      console.error('Unable to approve verification submission:', err);
+      setError(err instanceof Error ? err.message : 'Unable to approve verification submission.');
     } finally {
       setSavingId(null);
     }
@@ -799,6 +896,9 @@ export const SecretaryMemberRegistry = () => {
           <GuidedWorkflows
             activeWorkflow={activeWorkflow}
             verificationDueMembers={verificationDueMembers}
+            activeMembers={activeMembers}
+            activeVerificationCycle={activeVerificationCycle}
+            verificationSubmissions={verificationSubmissions}
             missingInfoMembers={missingInfoMembers}
             graduationReviewMembers={graduationReviewMembers}
             chaseRows={chaseRows}
@@ -806,7 +906,12 @@ export const SecretaryMemberRegistry = () => {
             copiedComposerField={copiedComposerField}
             lastChaseBatchId={lastChaseBatchId}
             saving={savingId === 'chase-batch'}
+            cycleSaving={savingId === 'verification-cycle'}
+            savingId={savingId}
             onWorkflowChange={setActiveWorkflow}
+            onLaunchVerification={launchSemesterVerification}
+            onCloseVerification={() => void closeSemesterVerification()}
+            onApproveVerification={submissionId => void approveSubmittedVerification(submissionId)}
             onCopyComposerField={(label, value) => void copyComposerField(label, value)}
             onTrackChaseBatch={() => void trackChaseBatch()}
             onSelectView={selectView}
@@ -1273,6 +1378,9 @@ const TableToolbar = ({
 const GuidedWorkflows = ({
   activeWorkflow,
   verificationDueMembers,
+  activeMembers,
+  activeVerificationCycle,
+  verificationSubmissions,
   missingInfoMembers,
   graduationReviewMembers,
   chaseRows,
@@ -1280,13 +1388,21 @@ const GuidedWorkflows = ({
   copiedComposerField,
   lastChaseBatchId,
   saving,
+  cycleSaving,
+  savingId,
   onWorkflowChange,
+  onLaunchVerification,
+  onCloseVerification,
+  onApproveVerification,
   onCopyComposerField,
   onTrackChaseBatch,
   onSelectView
 }: {
   activeWorkflow: WorkflowKey;
   verificationDueMembers: SecretaryMemberProfile[];
+  activeMembers: SecretaryMemberProfile[];
+  activeVerificationCycle: VerificationCycle | null;
+  verificationSubmissions: VerificationSubmission[];
   missingInfoMembers: SecretaryMemberProfile[];
   graduationReviewMembers: SecretaryMemberProfile[];
   chaseRows: SecretaryMemberProfile[];
@@ -1294,13 +1410,19 @@ const GuidedWorkflows = ({
   copiedComposerField: string | null;
   lastChaseBatchId: string | null;
   saving: boolean;
+  cycleSaving: boolean;
+  savingId: string | null;
   onWorkflowChange: (workflow: WorkflowKey) => void;
+  onLaunchVerification: (termLabel: string, dueDate: string) => void;
+  onCloseVerification: () => void;
+  onApproveVerification: (submissionId: string) => void;
   onCopyComposerField: (label: string, value: string) => void;
   onTrackChaseBatch: () => void;
   onSelectView: (view: RegistrySavedView) => void;
 }) => {
+  const cycleStats = getVerificationCycleStats(activeMembers, verificationSubmissions);
   const workflowStats = {
-    verification: verificationDueMembers.length,
+    verification: activeVerificationCycle ? cycleStats.openCount + cycleStats.needsReviewCount : verificationDueMembers.length,
     chase: missingInfoMembers.length,
     graduation: graduationReviewMembers.length
   };
@@ -1327,17 +1449,19 @@ const GuidedWorkflows = ({
       </div>
 
       {activeWorkflow === 'verification' && (
-        <WorkflowBand
-          title="Verification"
-          metric={`${verificationDueMembers.length} due`}
-          actionLabel="Open Missing View"
-          onAction={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
-        >
-          <WorkflowList rows={verificationDueMembers.slice(0, 6)} getMeta={member => [
-            member.last_verified_at ? `Verified ${formatDateTime(member.last_verified_at)}` : 'Never verified',
-            `${member.missing_required_field_count} missing`
-          ].join(' · ')} />
-        </WorkflowBand>
+        <VerificationCycleWorkflow
+          activeMembers={activeMembers}
+          staleMembers={verificationDueMembers}
+          activeCycle={activeVerificationCycle}
+          submissions={verificationSubmissions}
+          stats={cycleStats}
+          cycleSaving={cycleSaving}
+          savingId={savingId}
+          onLaunch={onLaunchVerification}
+          onClose={onCloseVerification}
+          onApprove={onApproveVerification}
+          onOpenMissingView={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
+        />
       )}
 
       {activeWorkflow === 'chase' && (
@@ -1388,6 +1512,191 @@ const GuidedWorkflows = ({
     </div>
   );
 };
+
+const VerificationCycleWorkflow = ({
+  activeMembers,
+  staleMembers,
+  activeCycle,
+  submissions,
+  stats,
+  cycleSaving,
+  savingId,
+  onLaunch,
+  onClose,
+  onApprove,
+  onOpenMissingView
+}: {
+  activeMembers: SecretaryMemberProfile[];
+  staleMembers: SecretaryMemberProfile[];
+  activeCycle: VerificationCycle | null;
+  submissions: VerificationSubmission[];
+  stats: VerificationCycleStats;
+  cycleSaving: boolean;
+  savingId: string | null;
+  onLaunch: (termLabel: string, dueDate: string) => void;
+  onClose: () => void;
+  onApprove: (submissionId: string) => void;
+  onOpenMissingView: () => void;
+}) => {
+  const [termLabel, setTermLabel] = useState(getDefaultTermLabel);
+  const [dueDate, setDueDate] = useState(getDefaultDueDate);
+  const submissionByMemberId = useMemo(
+    () => new Map(submissions.map(submission => [submission.member_id, submission])),
+    [submissions]
+  );
+  const reviewRows = activeMembers
+    .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
+    .filter(row => row.submission?.status === 'submitted');
+  const openRows = activeMembers
+    .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
+    .filter(row => !row.submission || ['not_started', 'in_progress', 'needs_changes'].includes(row.submission.status))
+    .slice(0, 8);
+
+  if (!activeCycle) {
+    return (
+      <section className="bg-surface-container-lowest rounded-xl p-5">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Verification Cycle</p>
+            <h3 className="mt-2 text-2xl font-black text-on-surface">No active semester gate</h3>
+            <p className="mt-3 max-w-2xl text-sm font-semibold text-on-surface-variant leading-6">
+              Launching starts a hard in-app verification gate for Active members. Parent/emergency/consent are tracked as review signals, not completion blockers.
+            </p>
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <MetricPill label="Audience" value={`${activeMembers.length} active`} />
+              <MetricPill label="Legacy stale" value={`${staleMembers.length} stale`} />
+              <MetricPill label="Gate mode" value="Hard" />
+            </div>
+            {staleMembers.length > 0 && (
+              <button
+                onClick={onOpenMissingView}
+                className="mt-6 bg-surface-container-low rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                Open Missing View
+              </button>
+            )}
+          </div>
+
+          <div className="bg-surface-container-low rounded-xl p-4">
+            <label className="block">
+              <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">Term</span>
+              <input
+                value={termLabel}
+                onChange={event => setTermLabel(event.target.value)}
+                className="mt-2 w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface font-bold outline-none focus:ring-1 focus:ring-primary/60"
+              />
+            </label>
+            <label className="block mt-3">
+              <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">Due date</span>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={event => setDueDate(event.target.value)}
+                className="mt-2 w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface font-bold outline-none focus:ring-1 focus:ring-primary/60"
+              />
+            </label>
+            <button
+              onClick={() => onLaunch(termLabel.trim(), dueDate)}
+              disabled={cycleSaving || activeMembers.length === 0 || termLabel.trim().length === 0}
+              className="mt-4 w-full rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+            >
+              {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+              Start Semester Verification
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="bg-surface-container-lowest rounded-xl p-5">
+      <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Active Verification Gate</p>
+          <h3 className="mt-2 text-2xl font-black text-on-surface">{activeCycle.term_label}</h3>
+          <p className="mt-2 text-sm font-semibold text-on-surface-variant">
+            {activeCycle.due_at ? `Due ${formatDate(activeCycle.due_at)}` : 'No due date'} · Active members only · Hard gate
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          disabled={cycleSaving}
+          className="rounded-full bg-surface-container-low text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-surface-container-high disabled:opacity-50 cursor-pointer"
+        >
+          {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+          Close Cycle
+        </button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 xl:grid-cols-5 gap-3">
+        <MetricPill label="Complete" value={`${stats.completeCount}/${activeMembers.length}`} />
+        <MetricPill label="Not started" value={String(stats.notStartedCount)} />
+        <MetricPill label="In progress" value={String(stats.inProgressCount)} />
+        <MetricPill label="Review" value={String(stats.needsReviewCount)} />
+        <MetricPill label="Optional flags" value={String(stats.optionalFlagCount)} />
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="bg-surface-container-low rounded-xl p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Submitted For Review</p>
+          {reviewRows.length === 0 ? (
+            <p className="text-sm font-bold text-on-surface-variant">No submitted profiles are waiting on Secretary review.</p>
+          ) : (
+            <div className="space-y-2">
+              {reviewRows.slice(0, 8).map(({ member, submission }) => (
+                <div key={member.id} className="bg-surface-container-lowest rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-black text-sm">{getDisplayName(member)}</p>
+                    <p className="text-[11px] font-bold text-on-surface-variant">
+                      Submitted {formatDateTime(submission?.submitted_at)} · {submission?.changed_fields.length ?? 0} changed
+                    </p>
+                  </div>
+                  {submission && (
+                    <button
+                      onClick={() => onApprove(submission.id)}
+                      disabled={savingId === submission.id}
+                      className="rounded-full bg-primary text-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12rem] flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingId === submission.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                      Approve
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-surface-container-low rounded-xl p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Still Gated</p>
+          {openRows.length === 0 ? (
+            <p className="text-sm font-bold text-on-surface-variant">Every active member has submitted or been cleared.</p>
+          ) : (
+            <div className="space-y-2">
+              {openRows.map(({ member, submission }) => (
+                <div key={member.id} className="bg-surface-container-lowest rounded-xl px-4 py-3">
+                  <p className="font-black text-sm">{getDisplayName(member)}</p>
+                  <p className="text-[11px] font-bold text-on-surface-variant">
+                    {formatVerificationSubmissionStatus(submission?.status ?? 'not_started')}
+                    {submission?.last_seen_at ? ` · Last seen ${formatDateTime(submission.last_seen_at)}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const MetricPill = ({ label, value }: { label: string; value: string }) => (
+  <div className="bg-surface-container-low rounded-xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</p>
+    <p className="mt-1 text-xl font-black text-on-surface">{value}</p>
+  </div>
+);
 
 const WorkflowBand = ({
   title,
@@ -2002,6 +2311,63 @@ function formatDate(value?: string | null) {
 function formatDateTime(value?: string | null) {
   if (!value) return 'Missing';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value));
+}
+
+function getVerificationCycleStats(
+  activeMembers: SecretaryMemberProfile[],
+  submissions: VerificationSubmission[]
+): VerificationCycleStats {
+  const submissionByMemberId = new Map(submissions.map(submission => [submission.member_id, submission]));
+  let completeCount = 0;
+  let notStartedCount = 0;
+  let inProgressCount = 0;
+  let needsReviewCount = 0;
+  let optionalFlagCount = 0;
+
+  for (const member of activeMembers) {
+    const submission = submissionByMemberId.get(member.id);
+    const status = submission?.status ?? 'not_started';
+
+    if (['submitted', 'approved', 'exempted', 'temporarily_unlocked'].includes(status)) {
+      completeCount += 1;
+    }
+
+    if (status === 'not_started') notStartedCount += 1;
+    if (status === 'in_progress') inProgressCount += 1;
+    if (status === 'submitted' || status === 'needs_changes') needsReviewCount += 1;
+
+    optionalFlagCount += submission?.optional_review_flags.length ?? 0;
+  }
+
+  return {
+    completeCount,
+    notStartedCount,
+    inProgressCount,
+    needsReviewCount,
+    openCount: activeMembers.length - completeCount,
+    optionalFlagCount
+  };
+}
+
+function formatVerificationSubmissionStatus(status: VerificationSubmission['status']) {
+  return status
+    .split('_')
+    .map(segment => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function getDefaultTermLabel() {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  const term = month >= 0 && month <= 4 ? 'Spring' : month >= 5 && month <= 6 ? 'Summer' : 'Fall';
+  return `${term} ${year}`;
+}
+
+function getDefaultDueDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 14);
+  return date.toISOString().slice(0, 10);
 }
 
 function formatFileDate(date: Date) {

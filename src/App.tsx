@@ -7,6 +7,7 @@ import { Onboarding } from './pages/Onboarding';
 import { Positions } from './pages/Positions';
 import { MemberDirectory } from './pages/MemberDirectory';
 import { SecretaryMemberRegistry } from './pages/SecretaryMemberRegistry';
+import { MemberVerification } from './pages/MemberVerification';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
@@ -27,7 +28,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { DevPersonaSwitcher } from './components/DevPersonaSwitcher';
 
 const AppContent = () => {
-  const { user, member, loading } = useAuth();
+  const { user, member, loading, verificationStatus, verificationError, refreshVerificationStatus, can } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -61,6 +62,41 @@ const AppContent = () => {
   // 3. Onboarding screen itself (profile creation flow)
   if (location.pathname === '/onboarding' && !member) {
     return <Onboarding onComplete={() => {}} />;
+  }
+
+  if (member && verificationError) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center px-6">
+        <section className="max-w-lg bg-surface-container-low rounded-[2rem] p-8 text-center">
+          <p className="text-primary text-[11px] font-black uppercase tracking-[0.2rem]">Verification Check Failed</p>
+          <h1 className="mt-4 text-3xl font-black text-on-surface">Profile gate could not load</h1>
+          <p className="mt-4 text-on-surface-variant font-semibold leading-7">
+            Refresh the verification status before continuing.
+          </p>
+          <button
+            onClick={() => void refreshVerificationStatus()}
+            className="mt-6 min-h-12 px-6 rounded-full bg-primary text-white text-xs font-black uppercase tracking-[0.16rem] hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </section>
+      </div>
+    );
+  }
+
+  const verificationGateActive = Boolean(verificationStatus?.is_gate_required && !verificationStatus.is_complete);
+  const canAdministerVerification = can('verification.manage');
+  const verificationAllowedPath =
+    location.pathname === '/verify'
+    || location.pathname === '/support'
+    || (canAdministerVerification && location.pathname === '/admin/members');
+
+  if (member && verificationGateActive && !verificationAllowedPath) {
+    return <Navigate to="/verify" replace />;
+  }
+
+  if (location.pathname === '/verify') {
+    return <MemberVerification />;
   }
 
   // 4. Check-In page is full-screen, open to all authenticated/onboarded users
