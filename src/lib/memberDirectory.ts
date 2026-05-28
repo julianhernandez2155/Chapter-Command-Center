@@ -59,6 +59,12 @@ export type MemberDirectoryProfileUpdate = Partial<Pick<
   | 'bio'
 >>;
 
+export interface StudyAbroadStatusUpdate {
+  label: string | null;
+  start_term: string | null;
+  end_term: string | null;
+}
+
 type MemberDirectoryViewRow = Omit<DirectoryMember, 'college'> & {
   college?: string | null;
 };
@@ -88,6 +94,13 @@ type PositionHistoryRow = {
   assigned_at: string | null;
   removed_at: string | null;
   position: { display_name: string } | { display_name: string }[] | null;
+};
+
+type StudyAbroadStatusRow = {
+  id: string;
+  starts_on: string | null;
+  ends_on: string | null;
+  created_at: string;
 };
 
 const DIRECTORY_VIEW_SELECT = `
@@ -221,6 +234,70 @@ export const updateMemberDirectoryProfile = async (
   }
 };
 
+export const replaceCurrentStudyAbroadStatus = async (
+  memberId: string,
+  values: StudyAbroadStatusUpdate
+) => {
+  const hasStatus = Boolean(values.label || values.start_term || values.end_term);
+
+  const { data, error } = await supabase
+    .from('member_status_periods')
+    .select('id, starts_on, ends_on, created_at')
+    .eq('member_id', memberId)
+    .eq('status_type', 'study_abroad')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const currentStatus = ((data ?? []) as StudyAbroadStatusRow[]).find(isCurrentStatusPeriod);
+
+  if (!hasStatus) {
+    if (!currentStatus) return;
+
+    const { error: deleteError } = await supabase
+      .from('member_status_periods')
+      .delete()
+      .eq('id', currentStatus.id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    return;
+  }
+
+  const payload = {
+    member_id: memberId,
+    status_type: 'study_abroad',
+    label: values.label,
+    start_term: values.start_term,
+    end_term: values.end_term
+  };
+
+  if (currentStatus) {
+    const { error: updateError } = await supabase
+      .from('member_status_periods')
+      .update(payload)
+      .eq('id', currentStatus.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from('member_status_periods')
+    .insert(payload);
+
+  if (insertError) {
+    throw insertError;
+  }
+};
+
 const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember => ({
   id: row.id,
   google_email: row.google_email,
@@ -249,3 +326,11 @@ const normalizeDirectoryMember = (row: MemberDirectoryViewRow): DirectoryMember 
   created_at: row.created_at,
   updated_at: row.updated_at
 });
+
+const isCurrentStatusPeriod = (status: StudyAbroadStatusRow) => {
+  const today = new Date();
+  const startsOn = status.starts_on ? new Date(status.starts_on) : null;
+  const endsOn = status.ends_on ? new Date(status.ends_on) : null;
+
+  return (!startsOn || startsOn <= today) && (!endsOn || endsOn >= today);
+};

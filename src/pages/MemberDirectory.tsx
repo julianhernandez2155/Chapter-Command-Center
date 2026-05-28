@@ -25,6 +25,7 @@ import {
   DirectoryPosition,
   fetchMemberDirectory,
   fetchMemberPositionHistory,
+  replaceCurrentStudyAbroadStatus,
   updateMemberDirectoryProfile
 } from '../lib/memberDirectory';
 
@@ -44,6 +45,9 @@ type QuickRosterDraft = {
   graduation_year: string;
   avatar_url: string;
   pledge_class: string;
+  study_abroad_label: string;
+  study_abroad_start_term: string;
+  study_abroad_end_term: string;
   birthday_month: string;
   birthday_day: string;
   bio: string;
@@ -130,6 +134,11 @@ export const MemberDirectory = () => {
         birthday_month: parseNullableNumber(quickDraft.birthday_month),
         birthday_day: parseNullableNumber(quickDraft.birthday_day),
         bio: nullableText(quickDraft.bio)
+      });
+      await replaceCurrentStudyAbroadStatus(editingMember.id, {
+        label: nullableText(quickDraft.study_abroad_label),
+        start_term: nullableText(quickDraft.study_abroad_start_term),
+        end_term: nullableText(quickDraft.study_abroad_end_term)
       });
 
       await loadMembers();
@@ -472,25 +481,39 @@ const QuickRosterEditor = ({
           </div>
         )}
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <QuickField label="Legal First" value={draft.legal_first_name} onChange={value => onChange('legal_first_name', value)} />
-          <QuickField label="Legal Last" value={draft.legal_last_name} onChange={value => onChange('legal_last_name', value)} />
-          <QuickField label="Preferred Name" value={draft.preferred_name} onChange={value => onChange('preferred_name', value)} />
-          <QuickField label="Personal Email" value={draft.personal_email} onChange={value => onChange('personal_email', value)} />
-          <QuickField label="Phone" value={draft.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
-          <QuickField label="Instagram" value={draft.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
-          <QuickField label="Snapchat" value={draft.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
-          <QuickField label="LinkedIn" value={draft.linkedin} onChange={value => onChange('linkedin', value)} placeholder="linkedin.com/in/profile" />
-          <QuickField label="School" value={draft.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
-          <QuickField label="Major" value={draft.major} onChange={value => onChange('major', value)} />
-          <QuickField label="Class Year" value={draft.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
-          <QuickField label="Pledge Class" value={draft.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
-          <QuickField label="Birthday Month" value={draft.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
-          <QuickField label="Birthday Day" value={draft.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
-          <QuickField label="Avatar URL" value={draft.avatar_url} onChange={value => onChange('avatar_url', value)} />
-          <div className="md:col-span-2 xl:col-span-3">
-            <QuickField label="Bio" value={draft.bio} onChange={value => onChange('bio', value)} textarea />
-          </div>
+        <div className="p-6 space-y-6">
+          <QuickSection title="Identity">
+            <QuickField label="Legal First" value={draft.legal_first_name} onChange={value => onChange('legal_first_name', value)} />
+            <QuickField label="Legal Last" value={draft.legal_last_name} onChange={value => onChange('legal_last_name', value)} />
+            <QuickField label="Preferred Name" value={draft.preferred_name} onChange={value => onChange('preferred_name', value)} />
+            <QuickField label="Avatar URL" value={draft.avatar_url} onChange={value => onChange('avatar_url', value)} />
+          </QuickSection>
+
+          <QuickSection title="Chapter And Academic">
+            <QuickField label="Class Year" value={draft.graduation_year} onChange={value => onChange('graduation_year', value)} placeholder="2027" />
+            <QuickField label="Pledge Class" value={draft.pledge_class} onChange={value => onChange('pledge_class', value)} placeholder="Spring 2027" />
+            <QuickField label="Study Abroad" value={draft.study_abroad_label} onChange={value => onChange('study_abroad_label', value)} placeholder="Madrid program" />
+            <QuickField label="Study Abroad Start" value={draft.study_abroad_start_term} onChange={value => onChange('study_abroad_start_term', value)} placeholder="Spring 2027" />
+            <QuickField label="Study Abroad End" value={draft.study_abroad_end_term} onChange={value => onChange('study_abroad_end_term', value)} placeholder="Summer 2027" />
+            <QuickField label="School" value={draft.school} onChange={value => onChange('school', value)} placeholder="Whitman" />
+            <QuickField label="Major" value={draft.major} onChange={value => onChange('major', value)} />
+            <QuickField label="Birthday Month" value={draft.birthday_month} onChange={value => onChange('birthday_month', value)} placeholder="1-12" />
+            <QuickField label="Birthday Day" value={draft.birthday_day} onChange={value => onChange('birthday_day', value)} placeholder="1-31" />
+          </QuickSection>
+
+          <QuickSection title="Contact And Social">
+            <QuickField label="Personal Email" value={draft.personal_email} onChange={value => onChange('personal_email', value)} />
+            <QuickField label="Phone" value={draft.phone} onChange={value => onChange('phone', value)} placeholder="315-555-0101" />
+            <QuickField label="Instagram" value={draft.instagram} onChange={value => onChange('instagram', value)} placeholder="@handle" />
+            <QuickField label="Snapchat" value={draft.snapchat} onChange={value => onChange('snapchat', value)} placeholder="@handle" />
+            <QuickField label="LinkedIn" value={draft.linkedin} onChange={value => onChange('linkedin', value)} placeholder="linkedin.com/in/profile" />
+          </QuickSection>
+
+          <QuickSection title="Profile">
+            <div className="md:col-span-2 xl:col-span-3">
+              <QuickField label="Bio" value={draft.bio} onChange={value => onChange('bio', value)} textarea />
+            </div>
+          </QuickSection>
         </div>
 
         <div className="sticky bottom-0 bg-surface-container-lowest/95 backdrop-blur-xl p-6 border-t border-outline-variant/10 flex justify-end gap-3">
@@ -512,6 +535,15 @@ const QuickRosterEditor = ({
       </div>
     )}
   </div>
+);
+
+const QuickSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className="rounded-xl bg-surface-container-low/45 border border-outline-variant/10 p-5">
+    <h3 className="text-[10px] uppercase tracking-[0.24rem] text-primary font-black mb-4">{title}</h3>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {children}
+    </div>
+  </section>
 );
 
 const QuickField = ({
@@ -909,6 +941,9 @@ const createQuickDraft = (member: DirectoryMember): QuickRosterDraft => ({
   graduation_year: member.graduation_year ? String(member.graduation_year) : '',
   avatar_url: member.avatar_url ?? '',
   pledge_class: member.pledge_class ?? '',
+  study_abroad_label: member.current_status_label ?? '',
+  study_abroad_start_term: member.current_status_start_term ?? '',
+  study_abroad_end_term: member.current_status_end_term ?? '',
   birthday_month: member.birthday_month ? String(member.birthday_month) : '',
   birthday_day: member.birthday_day ? String(member.birthday_day) : '',
   bio: member.bio ?? ''
