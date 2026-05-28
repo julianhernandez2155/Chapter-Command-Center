@@ -1011,14 +1011,14 @@ const RegistryTable = ({
       <table className="w-full min-w-[1120px] text-left border-separate border-spacing-0">
         <thead className="bg-surface-container-lowest text-on-surface-variant">
           <tr>
-            <th className="sticky left-0 z-30 bg-surface-container-lowest px-4 py-4 w-12" />
+            <th className="sticky left-0 z-40 bg-surface-container-lowest px-4 py-4 w-12" />
             {columns.map((column, index) => (
               <th
                 key={column.key}
                 style={{ minWidth: column.minWidth }}
                 className={cn(
                   'py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
-                  column.key === 'name' && 'sticky left-12 z-30 bg-surface-container-lowest shadow-[18px_0_28px_rgba(0,0,0,0.22)]',
+                  column.key === 'name' && 'sticky left-12 z-40 bg-surface-container-lowest shadow-[18px_0_28px_rgba(0,0,0,0.36)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:bg-surface-container-lowest before:content-[\"\"] before:-z-10',
                   index === 0 ? 'px-4' : 'px-5'
                 )}
               >
@@ -1050,7 +1050,11 @@ const RegistryTable = ({
                 selectedMember?.id === member.id && 'bg-primary/10'
               )}
             >
-              <td className={cn('sticky left-0 z-20 bg-inherit', rowPadding)}>
+              <td className={cn(
+                'sticky left-0 z-30',
+                selectedMember?.id === member.id ? 'bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))]' : 'bg-surface-container-low',
+                rowPadding
+              )}>
                 <button
                   onClick={event => {
                     event.stopPropagation();
@@ -1069,7 +1073,12 @@ const RegistryTable = ({
                   className={cn(
                     rowPadding,
                     'text-sm text-on-surface align-top',
-                    column.key === 'name' && 'sticky left-12 z-20 bg-inherit shadow-[18px_0_28px_rgba(0,0,0,0.18)]',
+                    column.key === 'name' && cn(
+                      'sticky left-12 z-30 shadow-[18px_0_28px_rgba(0,0,0,0.34)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:content-[\"\"] before:-z-10',
+                      selectedMember?.id === member.id
+                        ? 'bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))] before:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))]'
+                        : 'bg-surface-container-low before:bg-surface-container-low'
+                    ),
                     index === 0 ? 'px-4' : undefined
                   )}
                 >
