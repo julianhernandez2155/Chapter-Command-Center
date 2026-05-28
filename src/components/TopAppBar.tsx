@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
-import { Bell, Settings, Search, LogOut, ChevronDown, User } from 'lucide-react';
-import { cn } from '@/src/lib/utils';
+import { Bell, Settings, Search, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface TopAppBarProps {
-  title?: string;
-  subtitle?: string;
   showSearch?: boolean;
 }
 
-export const TopAppBar = ({ title = "Chapter Command Center", subtitle, showSearch = true }: TopAppBarProps) => {
+export const TopAppBar = ({ showSearch = true }: TopAppBarProps) => {
   const { member, roles, signOut } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
 
@@ -29,21 +26,7 @@ export const TopAppBar = ({ title = "Chapter Command Center", subtitle, showSear
     : 'Member';
 
   return (
-    <header className="fixed top-0 right-0 left-20 z-40 flex items-center justify-between px-12 h-20 bg-surface/80 backdrop-blur-md font-sans">
-      <div className="flex flex-col">
-        <span className={cn(
-          "font-black tracking-tighter text-on-surface transition-all duration-300",
-          subtitle ? "text-2xl" : "text-xs uppercase tracking-[0.3em] text-on-surface-variant"
-        )}>
-          {title}
-        </span>
-        {subtitle && (
-          <span className="text-on-surface-variant uppercase tracking-widest font-medium text-[10px] mt-1">
-            {subtitle}
-          </span>
-        )}
-      </div>
-
+    <header className="fixed top-0 right-0 left-20 z-40 flex items-center justify-end px-12 h-20 bg-surface/80 backdrop-blur-md font-sans">
       <div className="flex items-center space-x-8">
         {showSearch && (
           <div className="relative group hidden md:block">
@@ -52,7 +35,7 @@ export const TopAppBar = ({ title = "Chapter Command Center", subtitle, showSear
             </span>
             <input 
               className="bg-surface-container-low border-none rounded-full py-1.5 pl-10 pr-4 text-sm w-64 focus:ring-1 focus:ring-primary/50 transition-all text-on-surface placeholder:text-on-surface-variant/40" 
-              placeholder="Search Command Center..." 
+              placeholder="Search app..." 
               type="text"
             />
           </div>

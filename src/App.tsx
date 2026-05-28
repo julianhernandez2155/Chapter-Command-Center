@@ -75,10 +75,7 @@ const AppContent = () => {
     <div className="flex min-h-screen bg-surface selection:bg-primary/30">
       <SideNavBar />
       <div className="flex-1 pl-20 transition-all duration-300">
-        <TopAppBar 
-          title={getPageTitle(location.pathname)} 
-          subtitle={getPageSubtitle(location.pathname)}
-        />
+        <TopAppBar showSearch={shouldShowTopBarSearch(location.pathname)} />
         <main className="pt-32 pb-20 px-12">
           <AnimatePresence mode="wait">
             <motion.div
@@ -210,37 +207,9 @@ const AppContent = () => {
   );
 };
 
-const getPageTitle = (pathname: string) => {
-  if (pathname.startsWith('/events/')) return "Event Protocol";
-  if (pathname === '/events') return "Chapter Events";
-  if (pathname === '/dashboard') return "Chapter Command";
-  if (pathname === '/attendance') return "Data Protocol";
-  if (pathname === '/forms/intake') return "Form Intake";
-  if (pathname === '/forms/status') return "Submission Status";
-  if (pathname === '/forms/builder') return "Form Builder";
-  if (pathname === '/forms/responses') return "Form Responses";
-  if (pathname === '/forms/secretary') return "Secretary Hub";
-  if (pathname === '/dashboard/report') return "Chairman Report";
-  if (pathname === '/admin/reports') return "Reports compliance";
-  if (pathname === '/excusals/review') return "Excusal Queue";
-  if (pathname === '/excusals/status') return "My Excusals";
-  if (pathname === '/finance/dues') return "Finance Protocol";
-  if (pathname === '/roster') return "Member Directory";
-  return "Chapter Command Center";
-};
-
-const getPageSubtitle = (pathname: string) => {
-  if (pathname === '/dashboard') return "Alpha Chapter Leadership Hierarchy";
-  if (pathname === '/dashboard/report') return "Weekly Section Submission";
-  if (pathname === '/admin/reports') return "Weekly Compliance & Submissions";
-  if (pathname === '/events') return "Scheduling & Attendance Management";
-  if (pathname === '/attendance') return "Attendance Import & Verification";
-  if (pathname === '/forms/intake') return "Weekly Section Submission";
-  if (pathname === '/forms/builder') return "Weekly Form Assembly";
-  if (pathname === '/excusals/review') return "IVP Excusal Review Queue";
-  if (pathname === '/finance/dues') return "Dues Payment Tracking";
-  if (pathname === '/roster') return "Chapter roster, contact shortcuts, and member profiles";
-  return undefined;
+const shouldShowTopBarSearch = (pathname: string) => {
+  const routesWithLocalSearch = ['/events', '/roster'];
+  return !routesWithLocalSearch.some(route => pathname === route || pathname.startsWith(`${route}/`));
 };
 
 export default function App() {

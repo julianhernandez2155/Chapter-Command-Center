@@ -25,6 +25,7 @@ import {
 } from '../lib/memberDirectory';
 
 type MemberTab = 'active' | 'alumni';
+type SortMode = 'last_name' | 'first_name';
 
 export const MemberDirectory = () => {
   const [members, setMembers] = useState<DirectoryMember[]>([]);
@@ -40,6 +41,7 @@ export const MemberDirectory = () => {
   const [major, setMajor] = useState('all');
   const [pledgeClass, setPledgeClass] = useState('all');
   const [groupByPledgeClass, setGroupByPledgeClass] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('last_name');
 
   useEffect(() => {
     let isMounted = true;
@@ -119,8 +121,8 @@ export const MemberDirectory = () => {
       ]
         .filter(Boolean)
         .some(value => value!.toLowerCase().includes(normalizedSearch));
-    });
-  }, [classYear, major, members, pledgeClass, school, search, tab]);
+    }).sort((a, b) => sortMembers(a, b, sortMode));
+  }, [classYear, major, members, pledgeClass, school, search, sortMode, tab]);
 
   const groupedMembers = useMemo(() => {
     if (!groupByPledgeClass) {
@@ -153,9 +155,6 @@ export const MemberDirectory = () => {
       <section className="mb-10 flex flex-col gap-8">
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28rem] text-primary mb-3">
-              Chapter Directory
-            </p>
             <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-on-surface">
               Member Directory
             </h1>
@@ -209,6 +208,8 @@ export const MemberDirectory = () => {
           onSchoolChange={setSchool}
           onMajorChange={setMajor}
           onPledgeClassChange={setPledgeClass}
+          sortMode={sortMode}
+          onSortModeChange={setSortMode}
           onClear={() => {
             setClassYear('all');
             setSchool('all');
@@ -273,7 +274,7 @@ export const MemberDirectory = () => {
                     {group.label}
                   </h3>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {group.members.map(member => (
                     <React.Fragment key={member.id}>
                       <MemberCard
@@ -310,6 +311,8 @@ const FilterBar = ({
   onSchoolChange,
   onMajorChange,
   onPledgeClassChange,
+  sortMode,
+  onSortModeChange,
   onClear
 }: {
   classYear: string;
@@ -321,13 +324,23 @@ const FilterBar = ({
   onSchoolChange: (value: string) => void;
   onMajorChange: (value: string) => void;
   onPledgeClassChange: (value: string) => void;
+  sortMode: SortMode;
+  onSortModeChange: (value: SortMode) => void;
   onClear: () => void;
 }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] gap-3">
+  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(0,1fr))_auto] gap-3">
     <FilterSelect label="Class Year" value={classYear} values={options.classYears} onChange={onClassYearChange} />
     <FilterSelect label="School" value={school} values={options.schools} onChange={onSchoolChange} />
     <FilterSelect label="Major" value={major} values={options.majors} onChange={onMajorChange} />
     <FilterSelect label="Pledge Class" value={pledgeClass} values={options.pledgeClasses} onChange={onPledgeClassChange} />
+    <select
+      className="bg-surface-container-lowest border-none rounded-lg text-sm text-on-surface-variant font-semibold py-3 px-4 focus:ring-1 focus:ring-primary"
+      value={sortMode}
+      onChange={event => onSortModeChange(event.target.value as SortMode)}
+    >
+      <option value="last_name">Sort: Last Name</option>
+      <option value="first_name">Sort: First Name</option>
+    </select>
     <button
       onClick={onClear}
       className="bg-primary/10 text-primary font-black uppercase text-[11px] tracking-[0.16rem] px-5 py-3 rounded-lg hover:bg-primary/20 transition-colors"
@@ -396,7 +409,7 @@ const MemberCard = ({ member, selected, onSelect }: { member: DirectoryMember; s
         )}
       </div>
       <h3 className="text-2xl font-black text-on-surface mb-2 group-hover:text-primary transition-colors">
-        {getDisplayName(member)}
+        {getCardName(member)}
       </h3>
       <p className="text-on-surface font-bold text-sm mb-1">{getSchool(member) || 'School missing'}</p>
       <p className="text-on-surface-variant text-sm font-medium mb-1">
@@ -622,6 +635,9 @@ const isActiveRosterMember = (member: DirectoryMember) =>
 const getDisplayName = (member: DirectoryMember) =>
   member.preferred_name?.trim() || `${member.legal_first_name} ${member.legal_last_name}`.trim();
 
+const getCardName = (member: DirectoryMember) =>
+  `${member.preferred_name?.trim() || member.legal_first_name} ${member.legal_last_name}`.trim();
+
 const getLegalName = (member: DirectoryMember) =>
   `${member.legal_first_name} ${member.legal_last_name}`.trim();
 
@@ -632,6 +648,17 @@ const getInitials = (member: DirectoryMember) => {
   const first = member.preferred_name?.[0] ?? member.legal_first_name?.[0] ?? '';
   const last = member.legal_last_name?.[0] ?? '';
   return `${first}${last}`.toUpperCase() || 'M';
+};
+
+const sortMembers = (a: DirectoryMember, b: DirectoryMember, sortMode: SortMode) => {
+  if (sortMode === 'first_name') {
+    return getDisplayName(a).localeCompare(getDisplayName(b));
+  }
+
+  const lastNameCompare = a.legal_last_name.localeCompare(b.legal_last_name);
+  if (lastNameCompare !== 0) return lastNameCompare;
+
+  return getDisplayName(a).localeCompare(getDisplayName(b));
 };
 
 const formatClassYear = (year: number | null | undefined) =>
