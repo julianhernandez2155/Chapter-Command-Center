@@ -18,7 +18,6 @@ export const VERIFICATION_REQUIRED_FIELDS = [
   'school',
   'major',
   'local_address',
-  'campus_housing',
   'home_city',
   'home_state',
   'tshirt_size',

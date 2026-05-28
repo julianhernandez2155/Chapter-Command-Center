@@ -52,7 +52,6 @@ const REQUIRED_FIELD_LABELS: Record<VerificationRequiredField, string> = {
   school: 'School',
   major: 'Major',
   local_address: 'Local address',
-  campus_housing: 'Campus housing',
   home_city: 'Home city',
   home_state: 'Home state',
   tshirt_size: 'T-shirt size',
@@ -260,7 +259,7 @@ export const MemberVerification = () => {
                 <TextField required label="Personal email" value={form.personal_email} onChange={value => updateForm('personal_email', value)} />
                 <TextField required label="Phone" value={form.phone} onChange={value => updateForm('phone', value)} />
                 <TextField required label="Local address" value={form.local_address} onChange={value => updateForm('local_address', value)} />
-                <TextField required label="Campus housing" value={form.campus_housing} onChange={value => updateForm('campus_housing', value)} />
+                <TextField label="Campus housing" value={form.campus_housing} placeholder="Dorm, chapter house, or off campus" onChange={value => updateForm('campus_housing', value)} />
                 <TextField required label="Home city" value={form.home_city} onChange={value => updateForm('home_city', value)} />
                 <TextField required label="Home state" value={form.home_state} onChange={value => updateForm('home_state', value)} />
               </VerificationSection>
