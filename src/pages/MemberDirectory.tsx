@@ -752,6 +752,11 @@ const ProfileDrawer = ({
               <Avatar member={member} size="hero" />
             </div>
             <div className="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/40 to-black/10" />
+            <div className="absolute top-7 left-7 right-20 z-10 flex flex-wrap items-center gap-2">
+              {currentPositions[0] && <Badge tone="gold">{currentPositions[0].display_name}</Badge>}
+              {member.current_status_type === 'study_abroad' && <Badge tone="gold">Study Abroad</Badge>}
+              {member.status === 'alumni' && <Badge tone="muted">Alumni</Badge>}
+            </div>
             <button
               className="absolute top-7 right-7 text-on-surface hover:text-primary bg-black/40 backdrop-blur-xl rounded-full transition-all z-10 w-10 h-10 flex items-center justify-center"
               onClick={onClose}
@@ -763,16 +768,11 @@ const ProfileDrawer = ({
                 {primaryName}
               </h2>
               {legalName && (
-                <p className="text-sm text-on-surface-variant font-semibold mb-5">
+                <p className="text-sm text-on-surface-variant font-semibold">
                   <span className="text-[10px] uppercase tracking-[0.2rem] text-on-surface-variant/60 font-black mr-2">Legal name</span>
                   {legalName}
                 </p>
               )}
-              <div className="flex flex-wrap items-center gap-2">
-                {currentPositions[0] && <Badge tone="gold">{currentPositions[0].display_name}</Badge>}
-                {member.current_status_type === 'study_abroad' && <Badge tone="gold">Study Abroad</Badge>}
-                {member.status === 'alumni' && <Badge tone="muted">Alumni</Badge>}
-              </div>
             </div>
           </div>
 
