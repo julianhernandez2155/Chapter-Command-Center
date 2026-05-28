@@ -214,7 +214,7 @@ export const MemberVerification = () => {
 
     const missing = computeMissingRequiredFields(form);
     if (missing.length > 0) {
-      setError(`Complete required fields first: ${missing.map(field => REQUIRED_FIELD_LABELS[field]).join(', ')}.`);
+      setError(`Complete required fields first: ${missing.map(field => getRequiredFieldLabel(field, form)).join(', ')}.`);
       return;
     }
 
@@ -331,22 +331,13 @@ export const MemberVerification = () => {
                   </>
                 )}
                 {form.housing_type === 'chapter_housing' && (
-                  <>
-                    <TextField
-                      required
-                      label="Chapter house / building"
-                      value={form.campus_housing}
-                      placeholder="Chapter house name"
-                      onChange={value => updateForm('campus_housing', value)}
-                    />
-                    <TextField
-                      required
-                      label="Chapter house address"
-                      value={form.local_address}
-                      placeholder="Street address"
-                      onChange={value => updateForm('local_address', value)}
-                    />
-                  </>
+                  <TextField
+                    required
+                    label="Room number"
+                    value={form.campus_housing}
+                    placeholder="Room 204, 3B, etc."
+                    onChange={value => updateForm('campus_housing', value)}
+                  />
                 )}
               </VerificationSection>
 
@@ -414,7 +405,7 @@ export const MemberVerification = () => {
               <div className="mt-6 space-y-2">
                 {activeRequiredFields.map(field => (
                   <div key={field} className="flex items-center justify-between gap-3 text-sm font-bold">
-                    <span>{REQUIRED_FIELD_LABELS[field]}</span>
+                    <span>{getRequiredFieldLabel(field, form)}</span>
                     {missingFields.includes(field) ? (
                       <span className="text-primary text-[10px] uppercase tracking-[0.12rem]">Needed</span>
                     ) : (
@@ -692,9 +683,8 @@ function computeMissingRequiredFields(form: VerificationForm): VerificationRequi
     missing.push('local_address');
   }
 
-  if (form.housing_type === 'chapter_housing') {
-    if (form.campus_housing.trim() === '') missing.push('campus_housing');
-    if (form.local_address.trim() === '') missing.push('local_address');
+  if (form.housing_type === 'chapter_housing' && form.campus_housing.trim() === '') {
+    missing.push('campus_housing');
   }
 
   if (form.graduation_year && Number.isNaN(Number(form.graduation_year))) {
@@ -702,6 +692,13 @@ function computeMissingRequiredFields(form: VerificationForm): VerificationRequi
   }
 
   return [...new Set(missing)];
+}
+
+function getRequiredFieldLabel(field: VerificationRequiredField, form: VerificationForm) {
+  if (field === 'campus_housing' && form.housing_type === 'chapter_housing') return 'Room number';
+  if (field === 'campus_housing' && form.housing_type === 'on_campus') return 'Dorm / building name';
+  if (field === 'local_address' && form.housing_type === 'off_campus') return 'Local street address';
+  return REQUIRED_FIELD_LABELS[field];
 }
 
 function getActiveRequiredFields(form: VerificationForm, baseFields: VerificationRequiredField[]) {
@@ -716,7 +713,7 @@ function getActiveRequiredFields(form: VerificationForm, baseFields: Verificatio
   }
 
   if (form.housing_type === 'chapter_housing') {
-    fields.push('campus_housing', 'local_address');
+    fields.push('campus_housing');
   }
 
   return [...new Set(fields)];
