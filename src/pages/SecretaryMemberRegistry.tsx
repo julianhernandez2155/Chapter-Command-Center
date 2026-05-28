@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpDown,
@@ -1808,14 +1809,23 @@ const VerificationCycleWorkflow = ({
             {activeCycle.due_at ? `Due ${formatDate(activeCycle.due_at)}` : 'No due date'} · Active members only · Hard gate
           </p>
         </div>
-        <button
-          onClick={onClose}
-          disabled={cycleSaving}
-          className="rounded-full bg-surface-container-low text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-surface-container-high disabled:opacity-50 cursor-pointer"
-        >
-          {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-          Close Cycle
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to="/admin/members/verification"
+            className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-primary/90"
+          >
+            <ShieldCheck size={14} />
+            Focus Review
+          </Link>
+          <button
+            onClick={onClose}
+            disabled={cycleSaving}
+            className="rounded-full bg-surface-container-low text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-surface-container-high disabled:opacity-50 cursor-pointer"
+          >
+            {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+            Close Cycle
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 xl:grid-cols-5 gap-3">

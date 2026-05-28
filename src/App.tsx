@@ -7,6 +7,7 @@ import { Onboarding } from './pages/Onboarding';
 import { Positions } from './pages/Positions';
 import { MemberDirectory } from './pages/MemberDirectory';
 import { SecretaryMemberRegistry } from './pages/SecretaryMemberRegistry';
+import { SecretaryVerificationReview } from './pages/SecretaryVerificationReview';
 import { MemberVerification } from './pages/MemberVerification';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
@@ -89,7 +90,7 @@ const AppContent = () => {
   const verificationAllowedPath =
     location.pathname === '/verify'
     || location.pathname === '/support'
-    || (canAdministerVerification && location.pathname === '/admin/members');
+    || (canAdministerVerification && (location.pathname === '/admin/members' || location.pathname === '/admin/members/verification'));
 
   if (member && verificationGateActive && !verificationAllowedPath) {
     return <Navigate to="/verify" replace />;
@@ -108,12 +109,14 @@ const AppContent = () => {
     );
   }
 
+  const focusedSecretaryVerification = location.pathname === '/admin/members/verification';
+
   return (
     <div className="flex min-h-screen bg-surface selection:bg-primary/30">
       <SideNavBar />
       <div className="flex-1 pl-20 transition-all duration-300">
         <TopAppBar showSearch={shouldShowTopBarSearch(location.pathname)} />
-        <main className="pt-32 pb-20 px-12">
+        <main className={focusedSecretaryVerification ? 'pt-20 pb-8 px-8' : 'pt-32 pb-20 px-12'}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -228,6 +231,11 @@ const AppContent = () => {
                 <Route path="/admin/members" element={
                   <ProtectedRoute permission="admin.members.view">
                     <SecretaryMemberRegistry />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/members/verification" element={
+                  <ProtectedRoute permission="admin.members.view">
+                    <SecretaryVerificationReview />
                   </ProtectedRoute>
                 } />
                 <Route path="/archive" element={
