@@ -3,30 +3,44 @@ import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpDown,
+  AtSign,
+  BookOpen,
+  CalendarDays,
   ChevronDown,
   CheckCircle2,
   CheckSquare,
+  Clock,
   Columns3,
   Copy,
   ClipboardCheck,
   Download,
   FileSpreadsheet,
   Filter,
+  Flag,
   GraduationCap,
+  HeartPulse,
+  House,
+  IdCard,
+  Instagram,
+  Linkedin,
   Loader2,
   Mail,
+  MapPin,
   MessageSquare,
   Phone,
   Pencil,
   Save,
   Search,
+  School,
   ShieldCheck,
+  Shirt,
   SlidersHorizontal,
   Sparkles,
   Square,
   TableProperties,
   Trash2,
   UserRound,
+  UsersRound,
   X
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
@@ -50,6 +64,12 @@ import {
   launchVerificationCycle,
   reviewVerificationSubmission
 } from '../lib/memberVerification';
+import {
+  GraduationCandidate,
+  GraduationCycle,
+  fetchActiveGraduationCycle,
+  fetchGraduationCandidates
+} from '../lib/memberGraduation';
 
 type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
 type Density = 'compact' | 'standard' | 'comfortable';
@@ -334,6 +354,8 @@ export const SecretaryMemberRegistry = () => {
   const [lastChaseBatchId, setLastChaseBatchId] = useState<string | null>(null);
   const [activeVerificationCycle, setActiveVerificationCycle] = useState<VerificationCycle | null>(null);
   const [verificationSubmissions, setVerificationSubmissions] = useState<VerificationSubmission[]>([]);
+  const [activeGraduationCycle, setActiveGraduationCycle] = useState<GraduationCycle | null>(null);
+  const [graduationCandidates, setGraduationCandidates] = useState<GraduationCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -389,10 +411,22 @@ export const SecretaryMemberRegistry = () => {
     }
   }, []);
 
+  const loadGraduationCycle = useCallback(async () => {
+    try {
+      const cycle = await fetchActiveGraduationCycle();
+      setActiveGraduationCycle(cycle);
+      setGraduationCandidates(cycle ? await fetchGraduationCandidates(cycle.id) : []);
+    } catch (err) {
+      console.error('Error loading graduation cycle:', err);
+      setError(err instanceof Error ? err.message : 'Unable to load graduation workflow.');
+    }
+  }, []);
+
   useEffect(() => {
     void loadMembers();
     void loadVerificationCycle();
-  }, [loadMembers, loadVerificationCycle]);
+    void loadGraduationCycle();
+  }, [loadGraduationCycle, loadMembers, loadVerificationCycle]);
 
   useEffect(() => {
     persistCustomViews(customViews);
@@ -944,34 +978,6 @@ export const SecretaryMemberRegistry = () => {
             <span>{activeColumns.length} columns</span>
           </div>
 
-          {filterPanelOpen && (
-            <FilterPanel
-              filters={filters}
-              options={options}
-              onChange={updateFilter}
-              onClear={() => {
-                setFilters({ ...DEFAULT_FILTERS });
-                setSearch('');
-                setActiveViewId('custom-unsaved');
-              }}
-            />
-          )}
-
-          {columnPanelOpen && (
-            <ColumnPanel
-              selectedColumns={selectedColumns}
-              density={density}
-              viewNameDraft={viewNameDraft}
-              onToggleColumn={toggleColumn}
-              onDensityChange={nextDensity => {
-                setDensity(nextDensity);
-                setActiveViewId('custom-unsaved');
-              }}
-              onViewNameChange={setViewNameDraft}
-              onSaveView={saveCustomView}
-            />
-          )}
-
           {sensitiveView && (
             <div className="bg-primary/10 rounded-xl px-4 py-3 flex items-center gap-3 text-primary">
               <AlertCircle size={16} />
@@ -981,6 +987,53 @@ export const SecretaryMemberRegistry = () => {
             </div>
           )}
         </div>
+      </section>
+
+      <RightSideDrawer
+        open={filterPanelOpen || columnPanelOpen || workflowPanelOpen}
+        title={filterPanelOpen ? 'Filters' : columnPanelOpen ? 'Customize' : 'Workflows'}
+        description={
+          filterPanelOpen
+            ? 'Narrow the registry without pushing the table down.'
+            : columnPanelOpen
+              ? 'Choose columns, density, and save a custom registry view.'
+              : 'Run secretary workflows while keeping the roster readable.'
+        }
+        icon={filterPanelOpen ? <Filter size={18} /> : columnPanelOpen ? <Columns3 size={18} /> : <ClipboardCheck size={18} />}
+        widthClass={workflowPanelOpen ? 'max-w-[1120px]' : 'max-w-[820px]'}
+        onClose={() => {
+          setFilterPanelOpen(false);
+          setColumnPanelOpen(false);
+          setWorkflowPanelOpen(false);
+        }}
+      >
+        {filterPanelOpen && (
+          <FilterPanel
+            filters={filters}
+            options={options}
+            onChange={updateFilter}
+            onClear={() => {
+              setFilters({ ...DEFAULT_FILTERS });
+              setSearch('');
+              setActiveViewId('custom-unsaved');
+            }}
+          />
+        )}
+
+        {columnPanelOpen && (
+          <ColumnPanel
+            selectedColumns={selectedColumns}
+            density={density}
+            viewNameDraft={viewNameDraft}
+            onToggleColumn={toggleColumn}
+            onDensityChange={nextDensity => {
+              setDensity(nextDensity);
+              setActiveViewId('custom-unsaved');
+            }}
+            onViewNameChange={setViewNameDraft}
+            onSaveView={saveCustomView}
+          />
+        )}
 
         {workflowPanelOpen && (
           <GuidedWorkflows
@@ -991,6 +1044,8 @@ export const SecretaryMemberRegistry = () => {
             verificationSubmissions={verificationSubmissions}
             missingInfoMembers={missingInfoMembers}
             graduationReviewMembers={graduationReviewMembers}
+            activeGraduationCycle={activeGraduationCycle}
+            graduationCandidates={graduationCandidates}
             chaseRows={chaseRows}
             composer={chaseComposer}
             copiedComposerField={copiedComposerField}
@@ -1008,7 +1063,7 @@ export const SecretaryMemberRegistry = () => {
             onSelectView={selectView}
           />
         )}
-      </section>
+      </RightSideDrawer>
 
       {loading && (
         <section className="bg-surface-container-low/50 rounded-xl p-10 flex items-center justify-center gap-3 text-on-surface-variant">
@@ -1029,7 +1084,7 @@ export const SecretaryMemberRegistry = () => {
           'grid grid-cols-1 gap-6',
           selectedMember && 'xl:grid-cols-[minmax(0,1fr)_420px]'
         )}>
-          <div className="bg-surface-container-low rounded-2xl overflow-hidden">
+          <div className="overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest">
             {selectedRows.length > 0 && (
               <TableToolbar
                 selectedCount={selectedRows.length}
@@ -1046,7 +1101,6 @@ export const SecretaryMemberRegistry = () => {
               allVisibleSelected={visibleMembers.length > 0 && selectedIds.size === visibleMembers.length}
               sort={sort}
               density={density}
-              savingId={savingId}
               onSelect={member => {
                 setSelectedMember(current => current?.id === member.id ? null : member);
               }}
@@ -1064,8 +1118,6 @@ export const SecretaryMemberRegistry = () => {
                   : new Set(visibleMembers.map(member => member.id)));
               }}
               onSort={setSortColumn}
-              onMarkVerified={member => void markVerified(member)}
-              onMarkChased={member => void markChased(member)}
               onBeforeSelect={closeFloatingPanels}
             />
           </div>
@@ -1253,6 +1305,77 @@ const ViewMenuItem = ({
   </div>
 );
 
+const RightSideDrawer = ({
+  open,
+  title,
+  description,
+  icon,
+  widthClass = 'max-w-[760px]',
+  onClose,
+  children
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  widthClass?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) => {
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120]">
+      <div className="absolute inset-0 bg-black/55" onClick={onClose} />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          'absolute right-0 top-0 flex h-full w-full flex-col border-l border-outline-variant bg-surface-container-lowest shadow-[0_0_64px_rgba(0,0,0,0.45)]',
+          widthClass
+        )}
+      >
+        <header className="border-b border-outline-variant bg-surface-container-low px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+                {icon}
+              </span>
+              <div>
+                <h2 className="text-xl font-black tracking-tight text-on-surface">{title}</h2>
+                <p className="mt-1 text-sm font-semibold leading-5 text-on-surface-variant">{description}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full bg-surface-container-high p-2 text-on-surface-variant transition-colors hover:text-on-surface"
+              aria-label="Close drawer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4 md:p-5">
+          {children}
+        </div>
+      </aside>
+    </div>
+  );
+};
+
 const FilterPanel = ({
   filters,
   options,
@@ -1268,47 +1391,95 @@ const FilterPanel = ({
   };
   onChange: <K extends keyof RegistryFilters>(key: K, value: RegistryFilters[K]) => void;
   onClear: () => void;
-}) => (
-  <div className="bg-surface-container-lowest rounded-2xl p-5">
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-      <FilterSelect label="Status" value={filters.status} onChange={value => onChange('status', value)}>
-        <option value="all">All statuses</option>
-        {options.statuses.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
-      </FilterSelect>
-      <FilterSelect label="Pledge" value={filters.pledgeClass} onChange={value => onChange('pledgeClass', value)}>
-        <option value="all">All pledge classes</option>
-        {options.pledgeClasses.map(pledgeClass => <option key={pledgeClass} value={pledgeClass}>{pledgeClass}</option>)}
-      </FilterSelect>
-      <FilterSelect label="School" value={filters.school} onChange={value => onChange('school', value)}>
-        <option value="all">All schools</option>
-        {options.schools.map(school => <option key={school} value={school}>{school}</option>)}
-      </FilterSelect>
-      <FilterSelect label="Grad" value={filters.gradTerm} onChange={value => onChange('gradTerm', value)}>
-        <option value="all">All grad terms</option>
-        {options.gradTerms.map(term => <option key={term} value={term}>{term}</option>)}
-      </FilterSelect>
-      <FilterSelect label="Missing" value={filters.missing} onChange={value => onChange('missing', value as MissingFilter)}>
-        <option value="all">All records</option>
-        <option value="missing">Missing only</option>
-        <option value="complete">Complete only</option>
-      </FilterSelect>
-      <FilterSelect label="Verified" value={filters.verification} onChange={value => onChange('verification', value as VerificationFilter)}>
-        <option value="all">Any verification</option>
-        <option value="verified">Verified</option>
-        <option value="unverified">Unverified</option>
-        <option value="stale_30">Stale 30d</option>
-      </FilterSelect>
-    </div>
-    <div className="mt-4 flex justify-end">
+}) => {
+  const activeFilters = getActiveFilterItems(filters);
+
+  return (
+  <div className="space-y-6">
+    <section className="rounded-2xl bg-surface-container-low px-5 py-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-secondary">Current Lens</p>
+          <p className="mt-1 text-sm font-semibold text-on-surface-variant">
+            {activeFilters.length === 0 ? 'Showing the full registry.' : `${activeFilters.length} active filter${activeFilters.length === 1 ? '' : 's'}.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {activeFilters.length === 0 ? (
+            <span className="rounded-full bg-surface-container-lowest px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant">
+              No filters
+            </span>
+          ) : activeFilters.map(filter => (
+            <span key={filter} className="rounded-full bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12rem] text-primary">
+              {filter}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">Roster Scope</h3>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <FilterSelect label="Roster" value={filters.roster} onChange={value => onChange('roster', value as RosterFilter)}>
+          <option value="all">All roster records</option>
+          <option value="active">Active and new members</option>
+          <option value="missing">Missing data roster</option>
+          <option value="status_watchlist">Status watchlist</option>
+        </FilterSelect>
+        <FilterSelect label="Status" value={filters.status} onChange={value => onChange('status', value)}>
+          <option value="all">All statuses</option>
+          {options.statuses.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
+        </FilterSelect>
+      </div>
+    </section>
+
+    <section>
+      <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">Member Attributes</h3>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <FilterSelect label="Pledge class" value={filters.pledgeClass} onChange={value => onChange('pledgeClass', value)}>
+          <option value="all">All pledge classes</option>
+          {options.pledgeClasses.map(pledgeClass => <option key={pledgeClass} value={pledgeClass}>{pledgeClass}</option>)}
+        </FilterSelect>
+        <FilterSelect label="School" value={filters.school} onChange={value => onChange('school', value)}>
+          <option value="all">All schools</option>
+          {options.schools.map(school => <option key={school} value={school}>{school}</option>)}
+        </FilterSelect>
+        <FilterSelect label="Graduation term" value={filters.gradTerm} onChange={value => onChange('gradTerm', value)}>
+          <option value="all">All grad terms</option>
+          {options.gradTerms.map(term => <option key={term} value={term}>{term}</option>)}
+        </FilterSelect>
+      </div>
+    </section>
+
+    <section>
+      <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">Readiness</h3>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <FilterSelect label="Profile data" value={filters.missing} onChange={value => onChange('missing', value as MissingFilter)}>
+          <option value="all">All records</option>
+          <option value="missing">Missing only</option>
+          <option value="complete">Complete only</option>
+        </FilterSelect>
+        <FilterSelect label="Verification" value={filters.verification} onChange={value => onChange('verification', value as VerificationFilter)}>
+          <option value="all">Any verification</option>
+          <option value="verified">Verified</option>
+          <option value="unverified">Unverified</option>
+          <option value="stale_30">Stale 30d</option>
+        </FilterSelect>
+      </div>
+    </section>
+
+    <div className="flex justify-end">
       <button
         onClick={onClear}
-        className="bg-surface-container-low rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface"
+        className="rounded-full bg-surface-container-high px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant hover:text-on-surface"
       >
         Clear Filters
       </button>
     </div>
   </div>
-);
+  );
+};
 
 const FilterSelect = ({
   label,
@@ -1321,13 +1492,15 @@ const FilterSelect = ({
   onChange: (value: string) => void;
   children: React.ReactNode;
 }) => (
-  <label className="bg-surface-container-lowest rounded-full pl-4 pr-3 py-2 flex items-center gap-2 text-on-surface-variant">
-    <Filter size={13} className="text-primary" />
-    <span className="text-[9px] uppercase tracking-[0.16rem] font-black">{label}</span>
+  <label className="block rounded-2xl bg-surface-container-low px-4 py-3 text-on-surface-variant">
+    <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16rem]">
+      <Filter size={13} className="text-primary" />
+      {label}
+    </span>
     <select
       value={value}
       onChange={event => onChange(event.target.value)}
-      className="bg-transparent border-none focus:ring-0 p-0 text-xs text-on-surface min-w-24"
+      className="mt-2 w-full bg-surface-container-lowest rounded-xl border-none px-3 py-2 text-sm font-semibold text-on-surface focus:ring-1 focus:ring-primary/40"
     >
       {children}
     </select>
@@ -1357,12 +1530,35 @@ const ColumnPanel = ({
   }));
 
   return (
-    <div className="bg-surface-container-lowest rounded-2xl p-5 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
-      <div className="space-y-5">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="space-y-6">
+        <section className="rounded-2xl bg-surface-container-low px-5 py-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-secondary">Table Shape</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {(['compact', 'standard', 'comfortable'] as Density[]).map(option => (
+              <button
+                key={option}
+                onClick={() => onDensityChange(option)}
+                className={cn(
+                  'min-h-11 rounded-xl px-2 text-[10px] font-black uppercase tracking-[0.12rem] transition-colors',
+                  density === option ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant hover:text-on-surface'
+                )}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </section>
+
         {groupedColumns.map(({ group, columns }) => (
           <section key={group}>
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant mb-3">{group}</h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">{group}</h3>
+              <span className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant/70">
+                {columns.filter(column => selectedColumns.includes(column.key)).length}/{columns.length}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {columns.map(column => {
                 const checked = selectedColumns.includes(column.key);
                 return (
@@ -1371,14 +1567,29 @@ const ColumnPanel = ({
                     onClick={() => onToggleColumn(column.key)}
                     disabled={column.key === 'name'}
                     className={cn(
-                      'rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.12rem] flex items-center gap-2 transition-colors disabled:opacity-70',
+                      'min-h-12 rounded-xl px-3 text-left text-sm font-bold transition-colors disabled:opacity-70',
                       checked
                         ? 'bg-secondary/15 text-secondary'
-                        : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
+                        : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
                     )}
                   >
-                    {checked ? <CheckSquare size={13} /> : <Square size={13} />}
-                    {column.label}
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="flex min-w-0 items-center gap-2">
+                          {checked ? <CheckSquare size={14} /> : <Square size={14} />}
+                          <span className={cn(
+                            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+                            checked ? 'bg-secondary/10 text-secondary' : 'bg-surface-container-lowest text-on-surface-variant'
+                          )}>
+                            {getColumnPickerIcon(column.key)}
+                          </span>
+                          <span className="truncate">{column.label}</span>
+                        </span>
+                        {column.key === 'name' && (
+                        <span className="rounded-full bg-surface-container-lowest px-2 py-1 text-[9px] font-black uppercase tracking-[0.08rem] text-on-surface-variant">
+                          Fixed
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -1387,41 +1598,29 @@ const ColumnPanel = ({
         ))}
       </div>
 
-      <aside className="bg-surface-container-low rounded-xl p-4 h-fit">
-        <h3 className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant mb-4 flex items-center gap-2">
+      <aside className="h-fit rounded-2xl bg-surface-container-low p-4 xl:sticky xl:top-5">
+        <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">
           <SlidersHorizontal size={14} />
           View Setup
         </h3>
         <div className="space-y-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant mb-2">Density</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(['compact', 'standard', 'comfortable'] as Density[]).map(option => (
-                <button
-                  key={option}
-                  onClick={() => onDensityChange(option)}
-                  className={cn(
-                    'rounded-full px-2 py-2 text-[9px] font-black uppercase tracking-[0.12rem]',
-                    density === option ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
-                  )}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+          <div className="rounded-xl bg-surface-container-lowest px-4 py-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">Visible Columns</p>
+            <p className="mt-1 text-3xl font-black text-on-surface">{selectedColumns.length}</p>
+            <p className="mt-1 text-xs font-bold text-on-surface-variant">{formatLabel(density)} density</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant mb-2">Save Custom View</p>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">Save Custom View</p>
             <input
               value={viewNameDraft}
               onChange={event => onViewNameChange(event.target.value)}
               placeholder="Example: Fall Rush Calls"
-              className="w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/40 border-none focus:ring-1 focus:ring-primary/40"
+              className="w-full rounded-xl border-none bg-surface-container-lowest px-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:ring-1 focus:ring-primary/40"
             />
           </div>
           <button
             onClick={onSaveView}
-            className="w-full bg-primary text-white rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] flex items-center justify-center gap-2"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-[10px] font-black uppercase tracking-[0.16rem] text-white"
           >
             <Save size={14} />
             Save View
@@ -1430,6 +1629,70 @@ const ColumnPanel = ({
       </aside>
     </div>
   );
+};
+
+const getColumnPickerIcon = (columnKey: ColumnKey) => {
+  const size = 14;
+
+  switch (columnKey) {
+    case 'name':
+      return <UserRound size={size} />;
+    case 'status':
+      return <ShieldCheck size={size} />;
+    case 'suid':
+      return <IdCard size={size} />;
+    case 'active_positions':
+      return <UsersRound size={size} />;
+    case 'phone':
+      return <Phone size={size} />;
+    case 'google_email':
+    case 'personal_email':
+      return <Mail size={size} />;
+    case 'tshirt_size':
+    case 'hoodie_size':
+      return <Shirt size={size} />;
+    case 'expected_graduation_term':
+    case 'graduation_year':
+      return <GraduationCap size={size} />;
+    case 'study_abroad':
+      return <MapPin size={size} />;
+    case 'pledge_class':
+      return <Sparkles size={size} />;
+    case 'initiation_date':
+      return <CalendarDays size={size} />;
+    case 'school':
+      return <School size={size} />;
+    case 'major':
+      return <BookOpen size={size} />;
+    case 'housing_type':
+    case 'campus_housing':
+      return <House size={size} />;
+    case 'local_address':
+    case 'home':
+      return <MapPin size={size} />;
+    case 'instagram':
+      return <Instagram size={size} />;
+    case 'snapchat':
+      return <AtSign size={size} />;
+    case 'linkedin':
+      return <Linkedin size={size} />;
+    case 'missing_count':
+    case 'missing_fields':
+      return <AlertCircle size={size} />;
+    case 'last_verified_at':
+      return <CheckCircle2 size={size} />;
+    case 'last_chased_at':
+      return <Clock size={size} />;
+    case 'guardian_1':
+    case 'guardian_2':
+      return <UsersRound size={size} />;
+    case 'emergency_contact':
+      return <HeartPulse size={size} />;
+    case 'parent_outreach_consent':
+      return <ClipboardCheck size={size} />;
+    default:
+      return <Columns3 size={size} />;
+  }
 };
 
 const TableToolbar = ({
@@ -1474,6 +1737,8 @@ const GuidedWorkflows = ({
   verificationSubmissions,
   missingInfoMembers,
   graduationReviewMembers,
+  activeGraduationCycle,
+  graduationCandidates,
   chaseRows,
   composer,
   copiedComposerField,
@@ -1497,6 +1762,8 @@ const GuidedWorkflows = ({
   verificationSubmissions: VerificationSubmission[];
   missingInfoMembers: SecretaryMemberProfile[];
   graduationReviewMembers: SecretaryMemberProfile[];
+  activeGraduationCycle: GraduationCycle | null;
+  graduationCandidates: GraduationCandidate[];
   chaseRows: SecretaryMemberProfile[];
   composer: ChaseComposer;
   copiedComposerField: string | null;
@@ -1526,92 +1793,161 @@ const GuidedWorkflows = ({
   const workflowStats = {
     verification: activeVerificationCycle ? cycleStats.openCount + cycleStats.needsReviewCount : verificationDueMembers.length,
     chase: missingInfoMembers.length,
-    graduation: graduationReviewMembers.length
+    graduation: activeGraduationCycle
+      ? graduationCandidates.filter(candidate => candidate.member_response || candidate.secretary_decision === 'promote').length
+      : graduationReviewMembers.length
   };
+  const workflowDescriptions: Record<WorkflowKey, string> = {
+    verification: activeVerificationCycle ? 'Track progress and route review work.' : 'Launch the semester profile gate.',
+    chase: 'Copy the missing-info email and track follow-up batches.',
+    graduation: activeGraduationCycle ? 'Review responses and promote approved alumni.' : 'Start graduation confirmations.'
+  };
+  const graduationRespondedCount = graduationCandidates.filter(candidate => candidate.member_response).length;
+  const graduationReadyCount = graduationCandidates.filter(candidate => candidate.secretary_decision === 'promote' && !candidate.promoted_at).length;
+  const graduationPromotedCount = graduationCandidates.filter(candidate => candidate.promoted_at).length;
 
   return (
-    <div className="bg-surface-container-low rounded-2xl p-4">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-5">
-        {WORKFLOWS.map(workflow => (
-          <button
-            key={workflow.id}
-            onClick={() => onWorkflowChange(workflow.id)}
-            className={cn(
-              'rounded-xl px-4 py-4 text-left transition-colors',
-              activeWorkflow === workflow.id ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
-            )}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span>{workflow.icon}</span>
-              <span className="text-2xl font-black tracking-tight">{workflowStats[workflow.id]}</span>
-            </div>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16rem]">{workflow.label}</p>
-          </button>
-        ))}
-      </div>
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <nav className="space-y-2 xl:sticky xl:top-5 xl:self-start" aria-label="Registry workflows">
+        {WORKFLOWS.map(workflow => {
+          const active = activeWorkflow === workflow.id;
 
-      {activeWorkflow === 'verification' && (
-        <VerificationCycleWorkflow
-          activeMembers={activeMembers}
-          staleMembers={verificationDueMembers}
-          activeCycle={activeVerificationCycle}
-          submissions={verificationSubmissions}
-          stats={cycleStats}
-          cycleSaving={cycleSaving}
-          savingId={savingId}
-          onLaunch={onLaunchVerification}
-          onClose={onCloseVerification}
-          onReview={onReviewVerification}
-          onSaveField={onSaveVerificationField}
-          onOpenMissingView={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
-        />
-      )}
+          return (
+            <button
+              key={workflow.id}
+              onClick={() => onWorkflowChange(workflow.id)}
+              className={cn(
+                'w-full rounded-2xl px-4 py-4 text-left transition-colors',
+                active ? 'bg-primary/15 text-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
+              )}
+            >
+              <span className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16rem]">
+                    {workflow.icon}
+                    {workflow.label}
+                  </span>
+                  <span className={cn('mt-2 block text-xs font-semibold leading-5', active ? 'text-primary/80' : 'text-on-surface-variant')}>
+                    {workflowDescriptions[workflow.id]}
+                  </span>
+                </span>
+                <span className={cn(
+                  'rounded-full px-3 py-1 text-sm font-black',
+                  active ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface'
+                )}>
+                  {workflowStats[workflow.id]}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {activeWorkflow === 'chase' && (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
-          <section className="bg-surface-container-lowest rounded-xl p-5">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Missing Info Chase</p>
-                <h3 className="text-xl font-black text-on-surface mt-1">Batch BCC · {chaseRows.length} recipients</h3>
+      <div className="min-w-0">
+        {activeWorkflow === 'verification' && (
+          <VerificationCycleWorkflow
+            activeMembers={activeMembers}
+            staleMembers={verificationDueMembers}
+            activeCycle={activeVerificationCycle}
+            submissions={verificationSubmissions}
+            stats={cycleStats}
+            cycleSaving={cycleSaving}
+            onLaunch={onLaunchVerification}
+            onClose={onCloseVerification}
+            onOpenMissingView={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
+          />
+        )}
+
+        {activeWorkflow === 'chase' && (
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <section className="rounded-2xl bg-surface-container-low p-5">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Missing Info Chase</p>
+                  <h3 className="mt-1 text-2xl font-black text-on-surface">{chaseRows.length} recipients</h3>
+                  <p className="mt-1 text-sm font-semibold text-on-surface-variant">Uses selected rows first, then falls back to every visible record missing required data.</p>
+                </div>
+                <button
+                  onClick={onTrackChaseBatch}
+                  disabled={saving || chaseRows.length === 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-white disabled:opacity-50"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
+                  Mark Chased
+                </button>
               </div>
-              <button
-                onClick={onTrackChaseBatch}
-                disabled={saving || chaseRows.length === 0}
-                className="bg-primary text-white rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center gap-2 disabled:opacity-50"
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
-                Mark Chased
-              </button>
-            </div>
-            <ComposerField label="BCC recipients" copyLabel="Copy BCC" value={composer.recipientLine} copied={copiedComposerField === 'BCC'} onCopy={() => onCopyComposerField('BCC', composer.recipientLine)} />
-            <ComposerField label="Subject" copyLabel="Copy Subject" value={composer.subject} copied={copiedComposerField === 'Subject'} onCopy={() => onCopyComposerField('Subject', composer.subject)} />
-            <ComposerField label="Body" copyLabel="Copy Body" value={composer.body} copied={copiedComposerField === 'Body'} multiline copiedLabel="Copied body" onCopy={() => onCopyComposerField('Body', composer.body)} />
-            {lastChaseBatchId && (
-              <p className="mt-3 text-xs font-bold text-secondary">Batch tracked: {lastChaseBatchId.slice(0, 8)}</p>
-            )}
-          </section>
-          <section className="bg-surface-container-lowest rounded-xl p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Top Missing Records</p>
-            <WorkflowList rows={missingInfoMembers.slice(0, 8)} getMeta={member => member.missing_required_fields.slice(0, 4).map(formatLabel).join(', ')} />
-          </section>
-        </div>
-      )}
+              <ComposerField label="BCC recipients" copyLabel="Copy BCC" value={composer.recipientLine} copied={copiedComposerField === 'BCC'} onCopy={() => onCopyComposerField('BCC', composer.recipientLine)} />
+              <ComposerField label="Subject" copyLabel="Copy Subject" value={composer.subject} copied={copiedComposerField === 'Subject'} onCopy={() => onCopyComposerField('Subject', composer.subject)} />
+              <ComposerField label="Body" copyLabel="Copy Body" value={composer.body} copied={copiedComposerField === 'Body'} multiline copiedLabel="Copied body" onCopy={() => onCopyComposerField('Body', composer.body)} />
+              {lastChaseBatchId && (
+                <p className="mt-3 text-xs font-bold text-secondary">Batch tracked: {lastChaseBatchId.slice(0, 8)}</p>
+              )}
+            </section>
+            <section className="rounded-2xl bg-surface-container-low p-5">
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant">Highest Need</p>
+              <WorkflowList rows={missingInfoMembers.slice(0, 8)} getMeta={member => member.missing_required_fields.slice(0, 4).map(formatLabel).join(', ')} />
+            </section>
+          </div>
+        )}
 
-      {activeWorkflow === 'graduation' && (
-        <WorkflowBand
-          title="Graduation Review"
-          metric={`${graduationReviewMembers.length} candidates`}
-          actionLabel="Open Active View"
-          onAction={() => onSelectView(INITIAL_VIEW)}
-        >
-          <WorkflowList rows={graduationReviewMembers.slice(0, 8)} getMeta={member => [
-            member.expected_graduation_term ?? member.graduation_year ?? 'Grad term missing',
-            member.status,
-            member.current_status_label
-          ].filter(Boolean).join(' · ')} />
-        </WorkflowBand>
-      )}
+        {activeWorkflow === 'graduation' && (
+          <section className="rounded-2xl bg-surface-container-low p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18rem] text-primary">
+                  <GraduationCap size={14} />
+                  Graduation Workflow
+                </p>
+                <h3 className="mt-2 text-2xl font-black text-on-surface">
+                  {activeGraduationCycle ? activeGraduationCycle.term_label : `${graduationReviewMembers.length} likely candidates`}
+                </h3>
+                <p className="mt-2 max-w-xl text-xs font-semibold leading-5 text-on-surface-variant">
+                  {activeGraduationCycle
+                    ? 'Review member responses, approve alumni moves, and promote approved graduates from the focused workflow.'
+                    : 'Start member confirmations, review responses, then move approved graduates to alumni status.'}
+                </p>
+              </div>
+              <Link
+                to="/admin/members/graduation"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-white"
+              >
+                <GraduationCap size={14} />
+                {activeGraduationCycle ? 'Review Responses' : 'Start Graduation Review'}
+              </Link>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {activeGraduationCycle ? (
+                <>
+                  <MetricPill label="Candidates" value={String(graduationCandidates.length)} />
+                  <MetricPill label="Responded" value={String(graduationRespondedCount)} />
+                  <MetricPill label="Approved" value={String(graduationReadyCount)} />
+                </>
+              ) : (
+                <>
+                  <MetricPill label="Detected" value={String(graduationReviewMembers.length)} />
+                  <MetricPill label="Next step" value="Send" />
+                  <MetricPill label="Final action" value="Promote" />
+                </>
+              )}
+            </div>
+
+            <div className="mt-5">
+              {activeGraduationCycle ? (
+                <p className="rounded-xl bg-surface-container-lowest px-4 py-3 text-sm font-bold text-on-surface-variant">
+                  {graduationPromotedCount} promoted. {graduationCandidates.length - graduationRespondedCount} still waiting on member response.
+                </p>
+              ) : (
+                <WorkflowList rows={graduationReviewMembers.slice(0, 6)} getMeta={member => [
+                  member.expected_graduation_term ?? member.graduation_year ?? 'Grad term missing',
+                  member.status,
+                  member.current_status_label
+                ].filter(Boolean).join(' · ')} />
+              )}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 };
@@ -1623,11 +1959,8 @@ const VerificationCycleWorkflow = ({
   submissions,
   stats,
   cycleSaving,
-  savingId,
   onLaunch,
   onClose,
-  onReview,
-  onSaveField,
   onOpenMissingView
 }: {
   activeMembers: SecretaryMemberProfile[];
@@ -1636,116 +1969,33 @@ const VerificationCycleWorkflow = ({
   submissions: VerificationSubmission[];
   stats: VerificationCycleStats;
   cycleSaving: boolean;
-  savingId: string | null;
   onLaunch: (termLabel: string, dueDate: string) => void;
   onClose: () => void;
-  onReview: (input: {
-    submissionId: string;
-    decision: VerificationReviewDecision;
-    note?: string | null;
-    fields?: string[];
-    fieldNotes?: Record<string, string>;
-  }) => void;
-  onSaveField: (member: SecretaryMemberProfile, field: VerificationReviewField, value: string | boolean) => void;
   onOpenMissingView: () => void;
 }) => {
   const [termLabel, setTermLabel] = useState(getDefaultTermLabel);
   const [dueDate, setDueDate] = useState(getDefaultDueDate);
-  const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  const [fieldNotes, setFieldNotes] = useState<Record<string, string>>({});
   const submissionByMemberId = useMemo(
     () => new Map(submissions.map(submission => [submission.member_id, submission])),
     [submissions]
   );
-  const reviewRows = useMemo(() => activeMembers
+  const cycleRows = useMemo(() => activeMembers
     .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
-    .filter((row): row is { member: SecretaryMemberProfile; submission: VerificationSubmission } => row.submission?.status === 'submitted')
-    .sort((a, b) => (a.submission.submitted_at ?? '').localeCompare(b.submission.submitted_at ?? '')), [activeMembers, submissionByMemberId]);
-  const activeReview = reviewRows.find(row => row.submission.id === activeReviewId) ?? reviewRows[0] ?? null;
-  const activeReviewFields = useMemo(
-    () => activeReview ? buildVerificationReviewFields(activeReview.member, activeReview.submission) : [],
-    [activeReview]
-  );
-  const openRows = activeMembers
-    .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
+    .sort((a, b) => getDisplayName(a.member).localeCompare(getDisplayName(b.member))), [activeMembers, submissionByMemberId]);
+  const submittedRows = cycleRows.filter((row): row is { member: SecretaryMemberProfile; submission: VerificationSubmission } => row.submission?.status === 'submitted');
+  const needsChangesRows = cycleRows.filter((row): row is { member: SecretaryMemberProfile; submission: VerificationSubmission } => row.submission?.status === 'needs_changes');
+  const stillGatedRows = cycleRows
     .filter(row => !row.submission || ['not_started', 'in_progress', 'needs_changes'].includes(row.submission.status))
     .slice(0, 8);
-  const activeReviewIndex = activeReview
-    ? reviewRows.findIndex(row => row.submission.id === activeReview.submission.id)
-    : -1;
-
-  useEffect(() => {
-    if (reviewRows.length === 0) {
-      setActiveReviewId(null);
-      return;
-    }
-
-    if (!activeReviewId || !reviewRows.some(row => row.submission.id === activeReviewId)) {
-      setActiveReviewId(reviewRows[0].submission.id);
-    }
-  }, [activeReviewId, reviewRows]);
-
-  useEffect(() => {
-    setReviewError(null);
-    setFieldNotes(activeReview?.submission.needs_changes_field_notes ?? {});
-  }, [activeReview?.submission.id]);
-
-  const updateFieldNote = (fieldKey: string, note: string) => {
-    setFieldNotes(current => {
-      const next = { ...current };
-      const cleanNote = note.trimStart();
-      if (cleanNote.trim().length === 0) {
-        delete next[fieldKey];
-      } else {
-        next[fieldKey] = cleanNote;
-      }
-      return next;
-    });
-  };
-
-  const skipReview = () => {
-    if (reviewRows.length === 0) return;
-    const nextIndex = activeReviewIndex >= 0 ? (activeReviewIndex + 1) % reviewRows.length : 0;
-    setActiveReviewId(reviewRows[nextIndex].submission.id);
-  };
-
-  const submitReviewDecision = (decision: VerificationReviewDecision) => {
-    if (!activeReview) return;
-    const cleanedFieldNotes = Object.fromEntries(
-      Object.entries(fieldNotes)
-        .map(([field, note]) => [field, String(note).trim()] as const)
-        .filter(([, note]) => note.length > 0)
-    );
-    const notedFields = Object.keys(cleanedFieldNotes);
-
-    if (decision === 'needs_changes' && notedFields.length === 0) {
-      setReviewError('Add a note on at least one field.');
-      return;
-    }
-
-    if (decision === 'exempted' && notedFields.length === 0) {
-      setReviewError('Add a field note or use approve.');
-      return;
-    }
-
-    setReviewError(null);
-    onReview({
-      submissionId: activeReview.submission.id,
-      decision,
-      note: decision === 'needs_changes'
-        ? `${notedFields.length} field ${notedFields.length === 1 ? 'needs' : 'need'} member attention.`
-        : notedFields.map(field => `${formatLabel(field)}: ${cleanedFieldNotes[field]}`).join('\n'),
-      fields: notedFields,
-      fieldNotes: cleanedFieldNotes
-    });
-    skipReview();
-  };
+  const optionalFlagRows = submittedRows.filter(row => row.submission.optional_review_flags.length > 0);
+  const completionPercent = activeMembers.length > 0
+    ? Math.round((stats.completeCount / activeMembers.length) * 100)
+    : 0;
 
   if (!activeCycle) {
     return (
-      <section className="bg-surface-container-lowest rounded-xl p-5">
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6">
+      <section className="rounded-2xl bg-surface-container-low p-5">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Verification Cycle</p>
             <h3 className="mt-2 text-2xl font-black text-on-surface">No active semester gate</h3>
@@ -1767,7 +2017,7 @@ const VerificationCycleWorkflow = ({
             )}
           </div>
 
-          <div className="bg-surface-container-low rounded-xl p-4">
+          <div className="rounded-2xl bg-surface-container-lowest p-4">
             <label className="block">
               <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">Term</span>
               <input
@@ -1800,109 +2050,189 @@ const VerificationCycleWorkflow = ({
   }
 
   return (
-    <section className="bg-surface-container-lowest rounded-xl p-5">
-      <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Active Verification Gate</p>
-          <h3 className="mt-2 text-2xl font-black text-on-surface">{activeCycle.term_label}</h3>
-          <p className="mt-2 text-sm font-semibold text-on-surface-variant">
-            {activeCycle.due_at ? `Due ${formatDate(activeCycle.due_at)}` : 'No due date'} · Active members only · Hard gate
-          </p>
+    <section className="space-y-5">
+      <div className="rounded-2xl bg-surface-container-low p-5">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Active Verification Gate</p>
+            <h3 className="mt-1 text-2xl font-black text-on-surface">{activeCycle.term_label}</h3>
+            <p className="mt-2 text-sm font-semibold text-on-surface-variant">
+              {activeCycle.due_at ? `Due ${formatDate(activeCycle.due_at)}` : 'No due date'} · Active members only · Hard gate
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/members/verification"
+              className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-white hover:bg-primary/90"
+            >
+              <ShieldCheck size={14} />
+              Review Submissions
+            </Link>
+            <button
+              onClick={onClose}
+              disabled={cycleSaving}
+              className="flex items-center justify-center gap-2 rounded-full bg-surface-container-high px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-lowest disabled:opacity-50"
+            >
+              {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Close Cycle
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/admin/members/verification"
-            className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-primary/90"
-          >
-            <ShieldCheck size={14} />
-            Focus Review
-          </Link>
-          <button
-            onClick={onClose}
-            disabled={cycleSaving}
-            className="rounded-full bg-surface-container-low text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 hover:bg-surface-container-high disabled:opacity-50 cursor-pointer"
-          >
-            {cycleSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            Close Cycle
-          </button>
+
+        <div className="mt-5 rounded-2xl bg-surface-container-lowest p-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">Completion</p>
+              <p className="mt-1 text-3xl font-black text-on-surface">{completionPercent}%</p>
+            </div>
+            <p className="pb-1 text-sm font-black text-on-surface-variant">{stats.completeCount}/{activeMembers.length} complete</p>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-surface-container-low">
+            <div
+              className="h-full rounded-full bg-secondary"
+              style={{ width: `${completionPercent}%` }}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 xl:grid-cols-5 gap-3">
-        <MetricPill label="Complete" value={`${stats.completeCount}/${activeMembers.length}`} />
-        <MetricPill label="Not started" value={String(stats.notStartedCount)} />
-        <MetricPill label="In progress" value={String(stats.inProgressCount)} />
-        <MetricPill label="Review" value={String(stats.needsReviewCount)} />
-        <MetricPill label="Optional flags" value={String(stats.optionalFlagCount)} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <VerificationStatusTile label="Awaiting review" value={submittedRows.length} tone={submittedRows.length > 0 ? 'primary' : 'quiet'} />
+        <VerificationStatusTile label="Needs changes" value={needsChangesRows.length} tone={needsChangesRows.length > 0 ? 'error' : 'quiet'} />
+        <VerificationStatusTile label="Still gated" value={stats.openCount} tone={stats.openCount > 0 ? 'primary' : 'quiet'} />
+        <VerificationStatusTile label="Optional flags" value={optionalFlagRows.length} tone={optionalFlagRows.length > 0 ? 'primary' : 'quiet'} />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
-        <div className="bg-surface-container-low rounded-xl p-4">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant">Review Queue</p>
-            <span className="bg-surface-container-lowest rounded-full px-3 py-1 text-[10px] font-black text-on-surface-variant">
-              {reviewRows.length}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="rounded-2xl bg-surface-container-low p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Secretary Actions</p>
+              <h4 className="mt-1 text-xl font-black text-on-surface">What needs attention</h4>
+            </div>
+            <Link
+              to="/admin/members/verification"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-white hover:bg-primary/90"
+            >
+              <ShieldCheck size={14} />
+              Review Submissions
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            <VerificationActionRow
+              icon={<ClipboardCheck size={16} />}
+              title={`${submittedRows.length} submitted profile${submittedRows.length === 1 ? '' : 's'} ready`}
+              detail={submittedRows.length > 0 ? 'Open the review desk to approve, request changes, or exempt.' : 'No submitted profiles are waiting on manual review.'}
+              active={submittedRows.length > 0}
+            />
+            <VerificationActionRow
+              icon={<AlertCircle size={16} />}
+              title={`${needsChangesRows.length} member${needsChangesRows.length === 1 ? '' : 's'} need changes`}
+              detail="These members have already been sent back for correction and remain blocked until they resubmit."
+              active={needsChangesRows.length > 0}
+              tone="error"
+            />
+            <VerificationActionRow
+              icon={<MessageSquare size={16} />}
+              title={`${stats.notStartedCount} not started, ${stats.inProgressCount} in progress`}
+              detail="Use the list on the right for quick follow-up targeting."
+              active={stats.notStartedCount + stats.inProgressCount > 0}
+            />
+            <VerificationActionRow
+              icon={<Flag size={16} />}
+              title={`${optionalFlagRows.length} optional review flag${optionalFlagRows.length === 1 ? '' : 's'}`}
+              detail="Flags do not block completion, but they are the records most likely to need judgment."
+              active={optionalFlagRows.length > 0}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-surface-container-low p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant">Still Gated</p>
+            <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-[10px] font-black text-on-surface-variant">
+              {stats.openCount}
             </span>
           </div>
-          {reviewRows.length === 0 ? (
-            <p className="text-sm font-bold text-on-surface-variant">No submitted profiles are waiting on Secretary review.</p>
+          {stillGatedRows.length === 0 ? (
+            <p className="text-sm font-bold text-on-surface-variant">Every active member has submitted or been cleared.</p>
           ) : (
-            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
-              {reviewRows.map(({ member, submission }) => (
-                <button
-                  key={submission.id}
-                  type="button"
-                  onClick={() => setActiveReviewId(submission.id)}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-left transition-colors',
-                    activeReview?.submission.id === submission.id
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-	                  <div>
-	                    <p className="font-black text-sm">{getDisplayName(member)}</p>
-	                    <p className={cn(
-	                      'text-[11px] font-bold mt-1',
-	                      activeReview?.submission.id === submission.id ? 'text-white/75' : 'text-on-surface-variant'
-	                    )}>
-	                      {countReviewFieldNotes(submission)} notes · Submitted {formatDateTime(submission.submitted_at)}
-	                    </p>
-	                  </div>
-                  {submission.optional_review_flags.length > 0 && (
-                    <span className={cn(
-                      'rounded-full px-2 py-1 text-[9px] font-black uppercase',
-                      activeReview?.submission.id === submission.id ? 'bg-white/15 text-white' : 'bg-primary/10 text-primary'
-                    )}>
-                      Flag
-                    </span>
-                  )}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <WorkflowList rows={stillGatedRows.map(row => row.member)} getMeta={member => {
+              const submission = submissionByMemberId.get(member.id);
+              return [
+                formatVerificationSubmissionStatus(submission?.status ?? 'not_started'),
+                submission?.last_seen_at ? `Last seen ${formatDateTime(submission.last_seen_at)}` : null
+              ].filter(Boolean).join(' · ');
+            }} />
           )}
-        </div>
-
-        <VerificationReviewDetail
-          activeReview={activeReview}
-          fields={activeReviewFields}
-          fieldNotes={fieldNotes}
-          reviewError={reviewError}
-          savingId={savingId}
-          openRows={openRows}
-          onFieldNoteChange={updateFieldNote}
-          onApprove={() => submitReviewDecision('approved')}
-          onRequestChanges={() => submitReviewDecision('needs_changes')}
-          onExempt={() => submitReviewDecision('exempted')}
-          onSkip={skipReview}
-          onSaveField={onSaveField}
-        />
+          <button
+            onClick={onOpenMissingView}
+            className="mt-4 w-full rounded-full bg-surface-container-high px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-lowest"
+          >
+            Open Missing View
+          </button>
+        </section>
       </div>
     </section>
   );
 };
+
+const VerificationStatusTile = ({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: number;
+  tone: 'quiet' | 'primary' | 'error';
+}) => (
+  <div className={cn(
+    'rounded-2xl px-4 py-3',
+    tone === 'quiet' && 'bg-surface-container-low text-on-surface',
+    tone === 'primary' && 'bg-primary/10 text-primary',
+    tone === 'error' && 'bg-error/10 text-error'
+  )}>
+    <p className="text-[10px] font-black uppercase tracking-[0.14rem] opacity-75">{label}</p>
+    <p className="mt-1 text-2xl font-black">{value}</p>
+  </div>
+);
+
+const VerificationActionRow = ({
+  icon,
+  title,
+  detail,
+  active,
+  tone = 'primary'
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  active: boolean;
+  tone?: 'primary' | 'error';
+}) => (
+  <div className={cn(
+    'rounded-2xl px-4 py-3',
+    active && tone === 'primary' && 'bg-primary/10',
+    active && tone === 'error' && 'bg-error/10',
+    !active && 'bg-surface-container-lowest'
+  )}>
+    <div className="flex gap-3">
+      <span className={cn(
+        'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+        active && tone === 'primary' && 'bg-primary text-white',
+        active && tone === 'error' && 'bg-error text-white',
+        !active && 'bg-surface-container-low text-on-surface-variant'
+      )}>
+        {icon}
+      </span>
+      <div>
+        <p className="text-sm font-black text-on-surface">{title}</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-on-surface-variant">{detail}</p>
+      </div>
+    </div>
+  </div>
+);
 
 const VerificationReviewDetail = ({
   activeReview,
@@ -2242,7 +2572,7 @@ const ReviewStatusPill = ({ field, note }: { field: VerificationReviewField; not
 };
 
 const MetricPill = ({ label, value }: { label: string; value: string }) => (
-  <div className="bg-surface-container-low rounded-xl px-4 py-3">
+  <div className="rounded-xl bg-surface-container-lowest px-4 py-3">
     <p className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</p>
     <p className="mt-1 text-xl font-black text-on-surface">{value}</p>
   </div>
@@ -2261,15 +2591,15 @@ const WorkflowBand = ({
   onAction: () => void;
   children: React.ReactNode;
 }) => (
-  <section className="bg-surface-container-lowest rounded-xl p-5">
-    <div className="flex items-center justify-between gap-4 mb-4">
+  <section className="rounded-2xl bg-surface-container-low p-5">
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">{title}</p>
-        <h3 className="text-xl font-black text-on-surface mt-1">{metric}</h3>
+        <h3 className="mt-1 text-2xl font-black text-on-surface">{metric}</h3>
       </div>
       <button
         onClick={onAction}
-        className="bg-surface-container-low rounded-full px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-high"
+        className="rounded-full bg-surface-container-high px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-lowest"
       >
         {actionLabel}
       </button>
@@ -2285,11 +2615,11 @@ const WorkflowList = ({
   rows: SecretaryMemberProfile[];
   getMeta: (member: SecretaryMemberProfile) => string;
 }) => (
-  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+  <div className="space-y-2">
     {rows.length === 0 ? (
       <p className="text-sm font-bold text-on-surface-variant">No matching records.</p>
     ) : rows.map(member => (
-      <div key={member.id} className="bg-surface-container-low rounded-xl px-4 py-3">
+      <div key={member.id} className="rounded-xl bg-surface-container-lowest px-4 py-3">
         <p className="text-sm font-black text-on-surface">{getDisplayName(member)}</p>
         <p className="text-[11px] font-bold text-on-surface-variant mt-1 line-clamp-2">{getMeta(member)}</p>
       </div>
@@ -2331,13 +2661,13 @@ const ComposerField = ({
         value={value}
         readOnly
         rows={8}
-        className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface border-none focus:ring-1 focus:ring-primary/40 resize-none"
+        className="w-full resize-none rounded-xl border-none bg-surface-container-lowest px-4 py-3 text-sm text-on-surface focus:ring-1 focus:ring-primary/40"
       />
     ) : (
       <input
         value={value}
         readOnly
-        className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface border-none focus:ring-1 focus:ring-primary/40"
+        className="w-full rounded-xl border-none bg-surface-container-lowest px-4 py-3 text-sm text-on-surface focus:ring-1 focus:ring-primary/40"
       />
     )}
   </label>
@@ -2351,13 +2681,10 @@ const RegistryTable = ({
   allVisibleSelected,
   sort,
   density,
-  savingId,
   onSelect,
   onToggleRow,
   onToggleAll,
   onSort,
-  onMarkVerified,
-  onMarkChased,
   onBeforeSelect
 }: {
   columns: RegistryColumn[];
@@ -2367,23 +2694,20 @@ const RegistryTable = ({
   allVisibleSelected: boolean;
   sort: RegistrySort;
   density: Density;
-  savingId: string | null;
   onSelect: (member: SecretaryMemberProfile) => void;
   onToggleRow: (memberId: string) => void;
   onToggleAll: () => void;
   onSort: (column: RegistryColumn) => void;
-  onMarkVerified: (member: SecretaryMemberProfile) => void;
-  onMarkChased: (member: SecretaryMemberProfile) => void;
   onBeforeSelect: () => void;
 }) => {
   const rowPadding = density === 'compact' ? 'px-4 py-3' : density === 'comfortable' ? 'px-5 py-5' : 'px-5 py-4';
 
   return (
-    <div className="max-h-[calc(100vh-18rem)] overflow-auto">
+    <div className="max-h-[calc(100vh-18rem)] overflow-auto bg-surface-container-lowest">
       <table className="w-full min-w-[1120px] text-left border-separate border-spacing-0">
-        <thead className="bg-surface-container-lowest text-on-surface-variant">
+        <thead className="bg-surface-container-low text-on-surface-variant">
           <tr>
-            <th className="sticky left-0 top-0 z-50 bg-surface-container-lowest px-4 py-4 w-12">
+            <th className="sticky left-0 top-0 z-50 w-12 border-b border-r border-outline-variant bg-surface-container-low px-4 py-4">
               <button
                 onClick={event => {
                   event.stopPropagation();
@@ -2400,8 +2724,8 @@ const RegistryTable = ({
                 key={column.key}
                 style={{ minWidth: column.minWidth }}
                 className={cn(
-                  'sticky top-0 z-40 bg-surface-container-lowest py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
-                  column.key === 'name' && 'left-12 z-50 shadow-[18px_0_28px_rgba(0,0,0,0.36)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:bg-surface-container-lowest before:content-[\"\"] before:-z-10',
+                  'sticky top-0 z-40 border-b border-r border-outline-variant bg-surface-container-low py-4 text-[10px] uppercase tracking-[0.18rem] font-black whitespace-nowrap',
+                  column.key === 'name' && 'left-12 z-50 before:absolute before:inset-y-0 before:-left-12 before:w-12 before:bg-surface-container-low before:content-[\"\"] before:-z-10',
                   index === 0 ? 'px-4' : 'px-5'
                 )}
               >
@@ -2420,7 +2744,6 @@ const RegistryTable = ({
                 </button>
               </th>
             ))}
-            <th className="px-5 py-4 text-[10px] uppercase tracking-[0.18rem] font-black">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -2439,6 +2762,7 @@ const RegistryTable = ({
               <td className={cn(
                 'sticky left-0 z-30',
                 selectedMember?.id === member.id ? 'bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))]' : 'bg-surface-container-low',
+                'border-b border-r border-outline-variant',
                 rowPadding
               )}>
                 <button
@@ -2458,9 +2782,9 @@ const RegistryTable = ({
                   style={{ minWidth: column.minWidth }}
                   className={cn(
                     rowPadding,
-                    'text-sm text-on-surface align-top',
+                    'border-b border-r border-outline-variant text-sm text-on-surface align-top',
                     column.key === 'name' && cn(
-                      'sticky left-12 z-30 shadow-[18px_0_28px_rgba(0,0,0,0.34)] before:absolute before:inset-y-0 before:-left-12 before:w-12 before:content-[\"\"] before:-z-10',
+                      'sticky left-12 z-30 before:absolute before:inset-y-0 before:-left-12 before:w-12 before:content-[\"\"] before:-z-10',
                       selectedMember?.id === member.id
                         ? 'bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))] before:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface-container-low))]'
                         : 'bg-surface-container-low before:bg-surface-container-low'
@@ -2471,32 +2795,6 @@ const RegistryTable = ({
                   {column.render(member)}
                 </td>
               ))}
-              <td className={cn(rowPadding, 'align-top')}>
-                <div className="flex gap-2">
-                  <button
-                    onClick={event => {
-                      event.stopPropagation();
-                      onMarkVerified(member);
-                    }}
-                    disabled={savingId === member.id}
-                    className="p-2 rounded-full bg-surface-container-lowest text-secondary hover:bg-secondary/10 disabled:opacity-40"
-                    title="Mark verified"
-                  >
-                    {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                  </button>
-                  <button
-                    onClick={event => {
-                      event.stopPropagation();
-                      onMarkChased(member);
-                    }}
-                    disabled={savingId === member.id}
-                    className="p-2 rounded-full bg-surface-container-lowest text-primary hover:bg-primary/10 disabled:opacity-40"
-                    title="Mark chased"
-                  >
-                    {savingId === member.id ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                  </button>
-                </div>
-              </td>
             </tr>
           ))}
         </tbody>
@@ -2772,6 +3070,18 @@ const StatusPill = ({ status }: { status: string }) => (
     {formatLabel(status)}
   </span>
 );
+
+function getActiveFilterItems(filters: RegistryFilters) {
+  return [
+    filters.roster !== DEFAULT_FILTERS.roster ? `Roster: ${formatLabel(filters.roster)}` : null,
+    filters.status !== DEFAULT_FILTERS.status ? `Status: ${formatLabel(filters.status)}` : null,
+    filters.pledgeClass !== DEFAULT_FILTERS.pledgeClass ? `Pledge: ${filters.pledgeClass}` : null,
+    filters.school !== DEFAULT_FILTERS.school ? `School: ${filters.school}` : null,
+    filters.gradTerm !== DEFAULT_FILTERS.gradTerm ? `Grad: ${filters.gradTerm}` : null,
+    filters.missing !== DEFAULT_FILTERS.missing ? `Data: ${formatLabel(filters.missing)}` : null,
+    filters.verification !== DEFAULT_FILTERS.verification ? `Verification: ${formatLabel(filters.verification)}` : null
+  ].filter((item): item is string => Boolean(item));
+}
 
 function matchesFilters(member: SecretaryMemberProfile, filters: RegistryFilters) {
   if (filters.roster === 'active' && !['active', 'new_member'].includes(member.status)) return false;

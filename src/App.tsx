@@ -2,13 +2,16 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SideNavBar } from './components/SideNavBar';
 import { TopAppBar } from './components/TopAppBar';
+import { NotificationBell } from './components/NotificationBell';
 import { SignIn } from './pages/SignIn';
 import { Onboarding } from './pages/Onboarding';
 import { Positions } from './pages/Positions';
 import { MemberDirectory } from './pages/MemberDirectory';
 import { SecretaryMemberRegistry } from './pages/SecretaryMemberRegistry';
 import { SecretaryVerificationReview } from './pages/SecretaryVerificationReview';
+import { SecretaryGraduationReview } from './pages/SecretaryGraduationReview';
 import { MemberVerification } from './pages/MemberVerification';
+import { MemberGraduationConfirmation } from './pages/MemberGraduationConfirmation';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
@@ -27,6 +30,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { DevPersonaSwitcher } from './components/DevPersonaSwitcher';
+import { cn } from './lib/utils';
 
 const AppContent = () => {
   const { user, member, loading, verificationStatus, verificationError, refreshVerificationStatus, can } = useAuth();
@@ -89,8 +93,13 @@ const AppContent = () => {
   const canAdministerVerification = can('verification.manage');
   const verificationAllowedPath =
     location.pathname === '/verify'
+    || location.pathname === '/graduation'
     || location.pathname === '/support'
-    || (canAdministerVerification && (location.pathname === '/admin/members' || location.pathname === '/admin/members/verification'));
+    || (canAdministerVerification && (
+      location.pathname === '/admin/members'
+      || location.pathname === '/admin/members/verification'
+      || location.pathname === '/admin/members/graduation'
+    ));
 
   if (member && verificationGateActive && !verificationAllowedPath) {
     return <Navigate to="/verify" replace />;
@@ -110,13 +119,34 @@ const AppContent = () => {
   }
 
   const focusedSecretaryVerification = location.pathname === '/admin/members/verification';
+  const showTopBarSearch = shouldShowTopBarSearch(location.pathname);
+
+  if (focusedSecretaryVerification) {
+    return (
+      <div className="flex min-h-screen bg-surface selection:bg-primary/30">
+        <SideNavBar />
+        <NotificationBell />
+        <div className="flex-1 pl-20 transition-all duration-300">
+          <Routes location={location}>
+            <Route path="/admin/members/verification" element={
+              <ProtectedRoute permission="admin.members.view">
+                <SecretaryVerificationReview />
+              </ProtectedRoute>
+            } />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-surface selection:bg-primary/30">
       <SideNavBar />
+      <NotificationBell />
       <div className="flex-1 pl-20 transition-all duration-300">
-        <TopAppBar showSearch={shouldShowTopBarSearch(location.pathname)} />
-        <main className={focusedSecretaryVerification ? 'pt-20 pb-8 px-8' : 'pt-32 pb-20 px-12'}>
+        {showTopBarSearch && <TopAppBar showSearch />}
+        <main className={cn(showTopBarSearch ? 'pt-32' : 'pt-16', 'pb-20 px-12')}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -236,6 +266,16 @@ const AppContent = () => {
                 <Route path="/admin/members/verification" element={
                   <ProtectedRoute permission="admin.members.view">
                     <SecretaryVerificationReview />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/members/graduation" element={
+                  <ProtectedRoute permission="admin.members.view">
+                    <SecretaryGraduationReview />
+                  </ProtectedRoute>
+                } />
+                <Route path="/graduation" element={
+                  <ProtectedRoute>
+                    <MemberGraduationConfirmation />
                   </ProtectedRoute>
                 } />
                 <Route path="/archive" element={

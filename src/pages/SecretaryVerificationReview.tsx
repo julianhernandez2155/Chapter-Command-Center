@@ -1,19 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertCircle,
   ArrowLeft,
+  Check,
   CheckCircle2,
   CheckSquare,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  House,
   Loader2,
   MessageSquare,
   Pencil,
   Save,
+  ScrollText,
   ShieldCheck,
-  Square
+  Square,
+  User,
+  Users,
+  UsersRound
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { useAuth } from '../contexts/AuthContext';
 import {
   SecretaryMemberProfile,
   fetchSecretaryMemberProfiles,
@@ -24,7 +32,6 @@ import {
   VerificationCycle,
   VerificationReviewDecision,
   VerificationSubmission,
-  closeVerificationCycle,
   fetchActiveVerificationCycle,
   fetchVerificationSubmissions,
   reviewVerificationSubmission
@@ -75,8 +82,9 @@ interface CycleStats {
   optionalFlagCount: number;
 }
 
+type QueueFilter = 'all' | 'flagged';
+
 export const SecretaryVerificationReview = () => {
-  const { member: currentMember } = useAuth();
   const [members, setMembers] = useState<SecretaryMemberProfile[]>([]);
   const [cycle, setCycle] = useState<VerificationCycle | null>(null);
   const [submissions, setSubmissions] = useState<VerificationSubmission[]>([]);
@@ -85,6 +93,7 @@ export const SecretaryVerificationReview = () => {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -123,6 +132,10 @@ export const SecretaryVerificationReview = () => {
     .filter((row): row is { member: SecretaryMemberProfile; submission: VerificationSubmission } => row.submission?.status === 'submitted')
     .sort((a, b) => (a.submission.submitted_at ?? '').localeCompare(b.submission.submitted_at ?? '')), [activeMembers, submissionByMemberId]);
   const activeReview = reviewRows.find(row => row.submission.id === activeReviewId) ?? reviewRows[0] ?? null;
+  const flaggedReviewCount = reviewRows.filter(row => row.submission.optional_review_flags.length > 0).length;
+  const visibleReviewRows = queueFilter === 'flagged'
+    ? reviewRows.filter(row => row.submission.optional_review_flags.length > 0)
+    : reviewRows;
   const activeFields = useMemo(
     () => activeReview ? buildReviewFields(activeReview.member, activeReview.submission) : [],
     [activeReview]
@@ -155,10 +168,10 @@ export const SecretaryVerificationReview = () => {
     });
   };
 
-  const skipReview = () => {
+  const moveReview = (direction: 1 | -1) => {
     if (reviewRows.length === 0) return;
     const index = activeReview ? reviewRows.findIndex(row => row.submission.id === activeReview.submission.id) : -1;
-    const nextIndex = index >= 0 ? (index + 1) % reviewRows.length : 0;
+    const nextIndex = index >= 0 ? (index + direction + reviewRows.length) % reviewRows.length : 0;
     setActiveReviewId(reviewRows[nextIndex].submission.id);
   };
 
@@ -230,243 +243,289 @@ export const SecretaryVerificationReview = () => {
     }
   };
 
-  const closeCycle = async () => {
-    if (!currentMember || !cycle) return;
-    setSavingId('verification-cycle');
-    try {
-      await closeVerificationCycle(cycle.id, currentMember.id);
-      await loadData();
-    } catch (err) {
-      console.error('Unable to close cycle:', err);
-      setError(err instanceof Error ? err.message : 'Unable to close cycle.');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
   return (
-    <section className="min-h-[calc(100vh-8rem)]">
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/admin/members"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-            title="Back to registry"
-          >
-            <ArrowLeft size={18} />
-          </Link>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22rem] text-primary">Secretary Verification</p>
-            <h1 className="text-3xl font-black text-on-surface md:text-4xl">{cycle?.term_label ?? 'Verification Review'}</h1>
+    <section className="flex min-h-screen bg-surface text-on-surface">
+      <aside className="hidden w-[288px] shrink-0 bg-surface-container-lowest xl:block">
+        <div className="m-3 mt-20 rounded-md border border-outline-variant bg-surface-container-low">
+          <div className="px-5 pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.11rem] text-on-surface-variant">Verification Queue</p>
+            <div className="mt-4 grid grid-cols-2 border-b border-outline-variant text-sm">
+              <button
+                type="button"
+                onClick={() => setQueueFilter('all')}
+                className={cn(
+                  'relative h-10 text-center transition-colors',
+                  queueFilter === 'all' ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                )}
+              >
+                All ({reviewRows.length})
+                {queueFilter === 'all' && <span className="absolute inset-x-0 -bottom-px h-px bg-primary" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueFilter('flagged')}
+                className={cn(
+                  'relative h-10 text-center transition-colors',
+                  queueFilter === 'flagged' ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                )}
+              >
+                Flagged ({flaggedReviewCount})
+                {queueFilter === 'flagged' && <span className="absolute inset-x-0 -bottom-px h-px bg-primary" />}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <StatPill label="Complete" value={`${stats.completeCount}/${activeMembers.length}`} />
-          <StatPill label="Review" value={String(stats.needsReviewCount)} tone={stats.needsReviewCount > 0 ? 'primary' : 'quiet'} />
-          <StatPill label="Not started" value={String(stats.notStartedCount)} />
-          <StatPill label="Flags" value={String(stats.optionalFlagCount)} tone={stats.optionalFlagCount > 0 ? 'primary' : 'quiet'} />
-          {cycle && (
-            <button
-              type="button"
-              onClick={() => void closeCycle()}
-              disabled={savingId === 'verification-cycle'}
-              className="ml-0 flex min-h-11 items-center gap-2 rounded-full bg-surface-container-low px-4 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface hover:bg-surface-container-high disabled:opacity-50 lg:ml-2"
-            >
-              {savingId === 'verification-cycle' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              Close Cycle
-            </button>
+          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-0 pb-2">
+            {loading ? (
+              <QueueEmptyState label="Loading submitted profiles..." />
+            ) : visibleReviewRows.length === 0 ? (
+              <QueueEmptyState label={queueFilter === 'flagged' ? 'No flagged profiles are waiting.' : 'No submitted profiles are waiting.'} />
+            ) : (
+              visibleReviewRows.map(({ member, submission }) => {
+                const signals = getSubmissionSignals(member, submission);
+                return (
+                  <QueueReviewItem
+                    key={submission.id}
+                    active={activeReview?.submission.id === submission.id}
+                    name={getDisplayName(member)}
+                    submittedAt={submission.submitted_at}
+                    missing={signals.missing}
+                    flagged={signals.flagged}
+                    notes={signals.notes}
+                    onClick={() => setActiveReviewId(submission.id)}
+                  />
+                );
+              })
+            )}
+          </div>
+
+          {reviewRows.length > 6 && (
+            <div className="p-2">
+              <button className="flex h-10 w-full items-center justify-center gap-2 rounded-full bg-surface-container-high text-sm font-bold text-on-surface-variant hover:text-on-surface">
+                Load more <ChevronDown size={15} />
+              </button>
+            </div>
           )}
         </div>
-      </div>
+      </aside>
 
-      {error && (
-        <div className="mb-4 rounded-2xl bg-error/10 px-4 py-3 text-sm font-bold text-error">
-          {error}
-        </div>
-      )}
+      <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 md:px-8">
+        {error && (
+          <div className="mb-4 rounded-2xl bg-primary/10 px-4 py-3 text-sm font-bold text-primary">
+            {error}
+          </div>
+        )}
 
-      {loading ? (
-        <div className="flex min-h-96 items-center justify-center rounded-[2rem] bg-surface-container-low">
-          <Loader2 className="animate-spin text-primary" />
-          <span className="ml-3 text-xs font-black uppercase tracking-[0.18rem] text-on-surface-variant">Loading review</span>
-        </div>
-      ) : !cycle ? (
-        <div className="rounded-[2rem] bg-surface-container-low p-10 text-center">
-          <ShieldCheck className="mx-auto mb-4 text-secondary" size={36} />
-          <h2 className="text-2xl font-black text-on-surface">No active verification gate</h2>
-          <p className="mt-2 text-sm font-semibold text-on-surface-variant">Launch a semester gate from the Secretary Registry first.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="rounded-[2rem] bg-surface-container-low p-4 xl:min-h-[calc(100vh-14rem)]">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[10px] font-black uppercase tracking-[0.2rem] text-on-surface-variant">Review Queue</p>
-              <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-[10px] font-black text-on-surface-variant">{reviewRows.length}</span>
+        {loading ? (
+          <div className="flex min-h-[70vh] items-center justify-center rounded-[2rem] bg-surface-container-low">
+            <Loader2 className="animate-spin text-primary" />
+            <span className="ml-3 text-xs font-black uppercase tracking-[0.16rem] text-on-surface-variant">Loading review</span>
+          </div>
+        ) : !cycle ? (
+          <div className="flex min-h-[70vh] items-center justify-center rounded-[2rem] bg-surface-container-low text-center">
+            <div>
+              <ShieldCheck className="mx-auto mb-4 text-secondary" size={36} />
+              <h2 className="text-2xl font-black text-on-surface">No active verification gate</h2>
+              <p className="mt-2 text-sm font-semibold text-on-surface-variant">Launch a semester gate from the Secretary Registry first.</p>
             </div>
-            {reviewRows.length === 0 ? (
-              <p className="rounded-2xl bg-surface-container-lowest px-4 py-5 text-sm font-bold text-on-surface-variant">
-                No submitted profiles are waiting.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {reviewRows.map(({ member, submission }) => (
+          </div>
+        ) : !activeReview ? (
+          <div className="flex min-h-[70vh] items-center justify-center rounded-[2rem] bg-surface-container-low text-center">
+            <div>
+              <CheckCircle2 className="mx-auto mb-4 text-secondary" size={38} />
+              <p className="text-xl font-black text-on-surface">Queue clear</p>
+              <p className="mt-2 text-sm font-semibold text-on-surface-variant">Every submitted verification has been handled.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-5 flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <Link to="/admin/members" className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface">
+                  <ArrowLeft size={15} />
+                  Back to Queue
+                </Link>
+                <h1 className="text-[34px] font-black leading-none tracking-normal text-on-surface md:text-[40px]">
+                  {getDisplayName(activeReview.member)}
+                </h1>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <SignalCounter tone="red" value={missingCount} label="missing" />
+                  <SignalCounter tone="gold" value={flagCount} label={flagCount === 1 ? 'flag' : 'flags'} />
+                  <SignalCounter tone="gray" value={noteCount} label={noteCount === 1 ? 'note' : 'notes'} />
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col items-end gap-9">
+                <div className="flex gap-3">
                   <button
-                    key={submission.id}
                     type="button"
-                    onClick={() => setActiveReviewId(submission.id)}
-                    className={cn(
-                      'w-full rounded-[1.5rem] px-4 py-4 text-left transition-colors',
-                      activeReview?.submission.id === submission.id
-                        ? 'bg-primary text-white'
-                        : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
-                    )}
+                    onClick={() => moveReview(-1)}
+                    disabled={savingId === activeReview.submission.id || reviewRows.length < 2}
+                    className="flex h-11 items-center gap-2 rounded-full bg-surface-container-low px-5 text-sm font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-35"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black">{getDisplayName(member)}</p>
-                        <p className={cn(
-                          'mt-1 text-[11px] font-bold',
-                          activeReview?.submission.id === submission.id ? 'text-white/75' : 'text-on-surface-variant'
-                        )}>
-                          {countFieldNotes(submission)} notes · {formatDateTime(submission.submitted_at)}
-                        </p>
-                      </div>
-                      {submission.optional_review_flags.length > 0 && (
-                        <span className={cn(
-                          'rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.08rem]',
-                          activeReview?.submission.id === submission.id ? 'bg-white/15 text-white' : 'bg-primary/10 text-primary'
-                        )}>
-                          Flag
-                        </span>
-                      )}
-                    </div>
+                    <ChevronLeft size={17} />
+                    Previous
                   </button>
-                ))}
-              </div>
-            )}
-          </aside>
+                  <button
+                    type="button"
+                    onClick={() => moveReview(1)}
+                    disabled={savingId === activeReview.submission.id || reviewRows.length < 2}
+                    className="flex h-11 items-center gap-2 rounded-full bg-surface-container-low px-5 text-sm font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-35"
+                  >
+                    Next
+                    <ChevronRight size={17} />
+                  </button>
+                </div>
 
-          <main className="rounded-[2rem] bg-surface-container-low p-4 md:p-6">
-            {!activeReview ? (
-              <div className="flex min-h-96 items-center justify-center text-center">
-                <div>
-                  <CheckCircle2 className="mx-auto mb-4 text-secondary" size={38} />
-                  <p className="text-xl font-black text-on-surface">Queue clear</p>
-                  <p className="mt-2 text-sm font-semibold text-on-surface-variant">Every submitted verification has been handled.</p>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => void submitDecision('needs_changes')}
+                    disabled={savingId === activeReview.submission.id}
+                    className="flex h-12 min-w-48 items-center justify-center gap-3 rounded-full bg-surface-container-high px-5 text-sm font-black text-secondary transition-colors hover:bg-surface-bright disabled:opacity-50"
+                  >
+                    {savingId === activeReview.submission.id ? <Loader2 size={17} className="animate-spin" /> : <MessageSquare size={17} />}
+                    Request Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void submitDecision('approved')}
+                    disabled={savingId === activeReview.submission.id}
+                    className="flex h-12 min-w-48 items-center justify-center gap-3 rounded-full bg-primary px-5 text-sm font-black text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {savingId === activeReview.submission.id ? <Loader2 size={17} className="animate-spin" /> : <Check size={19} />}
+                    Approve
+                  </button>
                 </div>
               </div>
-            ) : (
-              <>
-                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.22rem] text-primary">Profile Inspection</p>
-                    <h2 className="mt-1 text-4xl font-black text-on-surface">{getDisplayName(activeReview.member)}</h2>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <SignalPill tone={missingCount > 0 ? 'primary' : 'quiet'} label={`${missingCount} missing`} />
-                      <SignalPill tone={flagCount > 0 ? 'primary' : 'quiet'} label={`${flagCount} ${flagCount === 1 ? 'flag' : 'flags'}`} />
-                      <SignalPill tone={noteCount > 0 ? 'error' : 'quiet'} label={`${noteCount} ${noteCount === 1 ? 'note' : 'notes'}`} />
+            </div>
+
+            {activeReview.submission.correction_notes && (
+              <div className="mb-3 rounded-2xl bg-primary/10 px-4 py-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.11rem] text-primary">Member Note</p>
+                <p className="mt-1 text-sm font-semibold text-on-surface">{activeReview.submission.correction_notes}</p>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              {sections.map(section => (
+                <section key={section.group} className="overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest">
+                  <div className="flex h-7 items-center justify-between border-b border-outline-variant bg-surface-container-low px-4">
+                    <div className="flex items-center gap-3">
+                      <SectionHeadingIcon group={section.group} />
+                      <p className="text-[13px] font-black uppercase tracking-[0.08rem] text-secondary">{section.group}</p>
                     </div>
+                    <ChevronDown size={15} className="rotate-180 text-on-surface-variant" />
                   </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void submitDecision('approved')}
-                      disabled={savingId === activeReview.submission.id}
-                      className="flex min-h-12 items-center gap-2 rounded-full bg-secondary px-5 text-[10px] font-black uppercase tracking-[0.16rem] text-black disabled:opacity-50"
-                    >
-                      {savingId === activeReview.submission.id ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void submitDecision('needs_changes')}
-                      disabled={savingId === activeReview.submission.id}
-                      className="flex min-h-12 items-center gap-2 rounded-full bg-primary px-5 text-[10px] font-black uppercase tracking-[0.16rem] text-white disabled:opacity-50"
-                    >
-                      {savingId === activeReview.submission.id ? <Loader2 size={15} className="animate-spin" /> : <AlertCircle size={15} />}
-                      Request
-                    </button>
-                    <button
-                      type="button"
-                      onClick={skipReview}
-                      disabled={savingId === activeReview.submission.id}
-                      className="min-h-12 rounded-full bg-surface-container-lowest px-5 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface hover:bg-surface-container-high disabled:opacity-50"
-                    >
-                      Skip
-                    </button>
+                  <div className="grid min-w-[760px] grid-cols-[30%_33%_24%_13%] border-b border-outline-variant bg-surface-container-low text-[12px] text-on-surface-variant">
+                    <div className="border-r border-outline-variant px-4 py-1">Field</div>
+                    <div className="border-r border-outline-variant px-4 py-1">Value</div>
+                    <div className="border-r border-outline-variant px-4 py-1">Status</div>
+                    <div className="px-4 py-1 text-center">Actions</div>
                   </div>
-                </div>
-
-                {activeReview.submission.correction_notes && (
-                  <div className="mb-5 rounded-2xl bg-primary/10 px-4 py-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-primary">Member Note</p>
-                    <p className="mt-1 text-sm font-semibold text-on-surface">{activeReview.submission.correction_notes}</p>
+                  <div className="min-w-[760px]">
+                    {section.fields.map(field => (
+                      <ReviewFieldRow
+                        key={field.key}
+                        field={field}
+                        note={fieldNotes[field.key] ?? ''}
+                        saving={savingId === `${activeReview.member.id}-${field.key}`}
+                        onNoteChange={value => updateFieldNote(field.key, value)}
+                        onSave={value => saveField(activeReview.member, field, value)}
+                      />
+                    ))}
                   </div>
-                )}
-
-                <div className="space-y-5">
-                  {sections.map(section => (
-                    <section key={section.group} className="overflow-hidden rounded-[1.5rem] bg-surface-container-lowest">
-                      <div className="px-4 py-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.22rem] text-secondary">{section.group}</p>
-                        <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                          {section.completeCount}/{section.fields.length} filled
-                          {section.missingCount > 0 ? ` · ${section.missingCount} missing` : ''}
-                          {section.noteCount > 0 ? ` · ${section.noteCount} notes` : ''}
-                        </p>
-                      </div>
-                      <div className="hidden grid-cols-[220px_minmax(0,1fr)_110px_88px] gap-3 bg-surface-container-low/55 px-4 py-2 text-[9px] font-black uppercase tracking-[0.16rem] text-on-surface-variant lg:grid">
-                        <span>Field</span>
-                        <span>Value</span>
-                        <span>Status</span>
-                        <span className="text-right">Actions</span>
-                      </div>
-                      <div className="space-y-1 px-2 pb-2">
-                        {section.fields.map(field => (
-                          <ReviewFieldRow
-                            key={field.key}
-                            field={field}
-                            note={fieldNotes[field.key] ?? ''}
-                            saving={savingId === `${activeReview.member.id}-${field.key}`}
-                            onNoteChange={value => updateFieldNote(field.key, value)}
-                            onSave={value => saveField(activeReview.member, field, value)}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              </>
-            )}
-          </main>
-        </div>
-      )}
+                </section>
+              ))}
+            </div>
+          </>
+        )}
+      </main>
     </section>
   );
 };
 
-const StatPill = ({ label, value, tone = 'quiet' }: { label: string; value: string; tone?: 'quiet' | 'primary' }) => (
-  <div className={cn(
-    'rounded-full px-4 py-2',
-    tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-surface-container-low text-on-surface'
-  )}>
-    <p className="text-[9px] font-black uppercase tracking-[0.12rem] opacity-70">{label}</p>
-    <p className="text-lg font-black leading-none">{value}</p>
-  </div>
+const QueueEmptyState = ({ label }: { label: string }) => (
+  <p className="mx-3 my-3 rounded-md border border-outline-variant bg-surface-container-lowest px-4 py-5 text-sm text-on-surface-variant">
+    {label}
+  </p>
 );
 
-const SignalPill = ({ tone, label }: { tone: 'quiet' | 'primary' | 'error'; label: string }) => (
+const QueueReviewItem = ({
+  active,
+  name,
+  submittedAt,
+  missing,
+  flagged,
+  notes,
+  onClick
+}: {
+  key?: React.Key;
+  active: boolean;
+  name: string;
+  submittedAt?: string | null;
+  missing: number;
+  flagged: number;
+  notes: number;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={cn(
+      'w-full border-b border-outline-variant px-4 py-4 text-left transition-colors',
+      active ? 'border border-primary/65 bg-primary/15' : 'hover:bg-surface-container-high/45'
+    )}
+  >
+    <div className="flex items-start justify-between gap-3">
+      <p className="text-[15px] font-bold text-on-surface">{name}</p>
+      <p className="shrink-0 text-[12px] text-on-surface-variant">{formatRelativeSubmission(submittedAt)}</p>
+    </div>
+    <div className="mt-3 flex gap-3">
+      <MiniCount tone="red" value={missing} />
+      <MiniCount tone="gold" value={flagged} />
+      <MiniCount tone="gray" value={notes} />
+    </div>
+  </button>
+);
+
+const MiniCount = ({ tone, value }: { tone: 'red' | 'gold' | 'gray'; value: number }) => (
   <span className={cn(
-    'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.1rem]',
-    tone === 'quiet' && 'bg-surface-container-lowest text-on-surface-variant',
-    tone === 'primary' && 'bg-primary/10 text-primary',
-    tone === 'error' && 'bg-error/10 text-error'
+    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold text-white',
+    tone === 'red' && 'bg-primary',
+    tone === 'gold' && 'bg-secondary-container',
+    tone === 'gray' && 'bg-surface-bright'
   )}>
-    {label}
+    {value}
   </span>
 );
+
+const SignalCounter = ({ tone, value, label }: { tone: 'red' | 'gold' | 'gray'; value: number; label: string }) => (
+  <span className="flex h-11 min-w-36 items-center gap-3 rounded-full bg-surface-container-low px-5 text-sm font-bold text-on-surface-variant">
+    <MiniCount tone={tone} value={value} />
+    <span>{label}</span>
+  </span>
+);
+
+const SectionHeadingIcon = ({ group }: { group: string }) => {
+  const iconProps = { size: 15, strokeWidth: 1.8, className: 'text-secondary' };
+  switch (group) {
+    case 'Identity':
+      return <User {...iconProps} />;
+    case 'Housing':
+      return <House {...iconProps} />;
+    case 'Academic':
+      return <ScrollText {...iconProps} />;
+    case 'Family':
+      return <UsersRound {...iconProps} />;
+    case 'Social':
+      return <Users {...iconProps} />;
+    case 'Apparel':
+      return <FileText {...iconProps} />;
+    default:
+      return <MessageSquare {...iconProps} />;
+  }
+};
 
 const ReviewFieldRow = ({
   field,
@@ -498,19 +557,18 @@ const ReviewFieldRow = ({
 
   return (
     <div className={cn(
-      'group rounded-[1.25rem] px-4 py-3 transition-colors',
-      note ? 'bg-error/10' : field.required && field.missing ? 'bg-primary/10' : 'bg-surface-container-low hover:bg-surface-container-high/60'
+      'group border-b border-outline-variant text-[12px] transition-colors last:border-b-0',
+      note ? 'bg-primary/12' : field.required && field.missing ? 'bg-primary/18' : 'bg-transparent hover:bg-surface-container-low/65'
     )}>
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[220px_minmax(0,1fr)_110px_88px] lg:items-center lg:gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-black text-on-surface">
-            {field.label}
-            {field.required && <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Required" />}
-          </p>
-          <p className="mt-0.5 text-[10px] font-bold text-on-surface-variant lg:hidden">{getFieldStatus(field, note)}</p>
+      <div className="grid min-h-[25px] grid-cols-[30%_33%_24%_13%]">
+        <div className="flex min-w-0 items-center border-r border-outline-variant px-4 py-0.5 text-on-surface">
+          <span className="truncate">{field.label}</span>
+          {!field.required && field.key === 'preferred_name' && (
+            <span className="ml-2 rounded-full bg-secondary-container px-1.5 py-0.5 text-[10px] font-semibold text-on-secondary-container">Note</span>
+          )}
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 border-r border-outline-variant px-4 py-0.5">
           {editing && field.editable ? (
             <div className="flex items-center gap-2">
               {field.inputType === 'checkbox' ? (
@@ -518,19 +576,19 @@ const ReviewFieldRow = ({
                   type="button"
                   onClick={() => setDraft(!Boolean(draft))}
                   className={cn(
-                    'flex min-h-10 min-w-10 items-center justify-center rounded-full',
-                    Boolean(draft) ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
+                    'flex h-7 min-w-7 items-center justify-center rounded-full',
+                    Boolean(draft) ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'
                   )}
                   title="Toggle value"
                 >
-                  {Boolean(draft) ? <CheckSquare size={15} /> : <Square size={15} />}
+                  {Boolean(draft) ? <CheckSquare size={13} /> : <Square size={13} />}
                 </button>
               ) : (
                 <input
                   type={field.inputType}
                   value={String(draft)}
                   onChange={event => setDraft(event.target.value)}
-                  className="min-w-0 flex-1 rounded-xl bg-surface-container-lowest px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+                  className="min-w-0 flex-1 rounded-lg bg-surface-container-low px-2 py-1 text-[13px] text-on-surface outline-none focus:ring-1 focus:ring-secondary/60"
                   autoFocus
                 />
               )}
@@ -541,10 +599,10 @@ const ReviewFieldRow = ({
                   setEditing(false);
                 }}
                 disabled={saving || !valueChanged}
-                className="flex min-h-10 min-w-10 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40"
+                className="flex h-7 min-w-7 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40"
                 title="Save field"
               >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               </button>
             </div>
           ) : (
@@ -552,9 +610,9 @@ const ReviewFieldRow = ({
               type="button"
               onClick={() => field.editable && setEditing(true)}
               className={cn(
-                'w-full rounded-xl px-2 py-1.5 text-left text-sm font-semibold transition-colors',
-                field.missing ? 'text-on-surface-variant' : 'text-on-surface',
-                field.editable && 'hover:bg-surface-container-lowest'
+                'w-full truncate rounded px-0 py-0.5 text-left transition-colors',
+                field.required && field.missing ? 'text-primary' : field.missing ? 'text-on-surface-variant/70' : 'text-on-surface',
+                field.editable && 'hover:text-on-surface'
               )}
             >
               {formatFieldValue(field)}
@@ -562,43 +620,43 @@ const ReviewFieldRow = ({
           )}
         </div>
 
-        <div className="hidden lg:block">
+        <div className="flex items-center border-r border-outline-variant px-4 py-0.5">
           <StatusPill field={field} note={note} />
         </div>
 
-        <div className="flex justify-start gap-1 lg:justify-end">
+        <div className="grid grid-cols-2">
           <button
             type="button"
             onClick={() => setEditing(current => !current)}
             disabled={!field.editable}
-            className="flex min-h-10 min-w-10 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface-variant opacity-100 transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-30 lg:opacity-45 lg:group-hover:opacity-100"
+            className="flex min-h-[25px] items-center justify-center border-r border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface disabled:opacity-30"
             title="Edit field"
           >
-            <Pencil size={15} />
+            <Pencil size={14} />
           </button>
           <button
             type="button"
             onClick={() => setNoting(current => !current)}
             className={cn(
-              'flex min-h-10 min-w-10 items-center justify-center rounded-full transition-colors',
-              note ? 'bg-error text-white' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface lg:opacity-45 lg:group-hover:opacity-100'
+              'flex min-h-[25px] items-center justify-center transition-colors hover:bg-surface-container-low',
+              note ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
             )}
             title={note ? 'Edit note' : 'Add note'}
           >
-            <MessageSquare size={15} />
+            <MessageSquare size={14} />
           </button>
         </div>
       </div>
 
       {noting && (
-        <label className="mt-3 block">
-          <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-error">Member note</span>
+        <label className="block border-t border-outline-variant px-4 py-3">
+          <span className="text-[10px] font-black uppercase tracking-[0.12rem] text-primary">Member note</span>
           <textarea
             value={note}
             onChange={event => onNoteChange(event.target.value)}
             rows={2}
             placeholder="Tell the member exactly what to fix for this field."
-            className="mt-2 w-full resize-none rounded-xl bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+            className="mt-2 w-full resize-none rounded-xl bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/45 focus:ring-1 focus:ring-secondary/60"
           />
         </label>
       )}
@@ -611,10 +669,10 @@ const StatusPill = ({ field, note }: { field: VerificationReviewField; note: str
   const tone = note ? 'error' : field.required && field.missing ? 'primary' : field.flagged ? 'primary' : 'quiet';
   return (
     <span className={cn(
-      'inline-flex rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-[0.08rem]',
-      tone === 'quiet' && 'bg-surface-container-lowest text-on-surface-variant',
-      tone === 'primary' && 'bg-primary/10 text-primary',
-      tone === 'error' && 'bg-error/10 text-error'
+      'text-[12px]',
+      tone === 'quiet' && 'text-secondary',
+      tone === 'primary' && 'text-primary',
+      tone === 'error' && 'text-primary'
     )}>
       {status}
     </span>
@@ -622,24 +680,21 @@ const StatusPill = ({ field, note }: { field: VerificationReviewField; note: str
 };
 
 const REVIEW_MEMBER_FIELDS: VerificationReviewField[] = [
+  reviewDisplayField('legal_name', 'Legal name', 'Identity', 'text'),
   reviewMemberField('preferred_name', 'Preferred name', 'Identity', 'text'),
+  reviewDisplayField('birthday', 'Date of birth', 'Identity', 'text'),
+  reviewDisplayField('suid', 'SUID', 'Identity', 'text'),
+  reviewDisplayField('google_email', 'School email', 'Contact', 'email'),
   reviewMemberField('personal_email', 'Personal email', 'Contact', 'email'),
   reviewMemberField('phone', 'Phone', 'Contact', 'tel'),
+  reviewMemberField('instagram', 'Instagram handle', 'Contact', 'text'),
   reviewMemberField('housing_type', 'Housing type', 'Housing', 'text'),
   reviewMemberField('local_address', 'Local address', 'Housing', 'text'),
   reviewMemberField('campus_housing', 'Dorm / room', 'Housing', 'text'),
-  reviewMemberField('home_city', 'Home city', 'Housing', 'text'),
-  reviewMemberField('home_state', 'Home state', 'Housing', 'text'),
-  reviewMemberField('graduation_year', 'Graduation year', 'Academic', 'number'),
-  reviewMemberField('expected_graduation_term', 'Expected grad term', 'Academic', 'text'),
-  reviewMemberField('school', 'School', 'Academic', 'text'),
+  reviewDisplayField('college', 'College', 'Academic', 'text'),
   reviewMemberField('major', 'Major', 'Academic', 'text'),
-  reviewMemberField('tshirt_size', 'T-shirt size', 'Apparel', 'text'),
-  reviewMemberField('hoodie_size', 'Hoodie size', 'Apparel', 'text'),
-  reviewMemberField('instagram', 'Instagram', 'Social', 'text'),
-  reviewMemberField('snapchat', 'Snapchat', 'Social', 'text'),
-  reviewMemberField('linkedin', 'LinkedIn', 'Social', 'text'),
-  reviewMemberField('parent_outreach_consent', 'Parent outreach consent', 'Family', 'checkbox')
+  reviewMemberField('expected_graduation_term', 'Expected graduation', 'Academic', 'text'),
+  reviewMemberField('graduation_year', 'Graduation year', 'Academic', 'number')
 ];
 
 const REVIEW_GUARDIAN_FIELDS: VerificationReviewField[] = [
@@ -647,13 +702,10 @@ const REVIEW_GUARDIAN_FIELDS: VerificationReviewField[] = [
   reviewGuardianField('guardian_1_relationship', 'Guardian 1 relationship', 'Family', 1, 'relationship', 'text'),
   reviewGuardianField('guardian_1_phone', 'Guardian 1 phone', 'Family', 1, 'phone', 'tel'),
   reviewGuardianField('guardian_1_email', 'Guardian 1 email', 'Family', 1, 'email', 'email'),
-  reviewGuardianField('guardian_2_name', 'Guardian 2 name', 'Family', 2, 'contact_name', 'text'),
-  reviewGuardianField('guardian_2_relationship', 'Guardian 2 relationship', 'Family', 2, 'relationship', 'text'),
-  reviewGuardianField('guardian_2_phone', 'Guardian 2 phone', 'Family', 2, 'phone', 'tel'),
-  reviewGuardianField('guardian_2_email', 'Guardian 2 email', 'Family', 2, 'email', 'email')
+  reviewGuardianField('guardian_2_name', 'Guardian 2 name', 'Family', 2, 'contact_name', 'text')
 ];
 
-const REVIEW_SECTION_ORDER = ['Identity', 'Contact', 'Housing', 'Academic', 'Apparel', 'Social', 'Family'];
+const REVIEW_SECTION_ORDER = ['Identity', 'Contact', 'Housing', 'Academic', 'Family'];
 
 function reviewMemberField(
   key: ReviewEditableMemberField,
@@ -671,6 +723,24 @@ function reviewMemberField(
     required: false,
     inputType,
     editable: { table: 'members', field: key }
+  };
+}
+
+function reviewDisplayField(
+  key: string,
+  label: string,
+  group: string,
+  inputType: ReviewFieldInputType
+): VerificationReviewField {
+  return {
+    key,
+    label,
+    group,
+    currentValue: null,
+    flagged: false,
+    missing: false,
+    required: false,
+    inputType
   };
 }
 
@@ -731,6 +801,11 @@ function groupReviewFields(fields: VerificationReviewField[], fieldNotes: Record
 
 function getMemberReviewValue(member: SecretaryMemberProfile, key: string): string | boolean | number | null {
   switch (key) {
+    case 'legal_name':
+      return `${member.legal_first_name} ${member.legal_last_name}`.trim();
+    case 'birthday':
+      if (!member.birthday_month || !member.birthday_day) return null;
+      return `${String(member.birthday_month).padStart(2, '0')}/${String(member.birthday_day).padStart(2, '0')}`;
     case 'guardian_1_name':
       return member.guardian_1_name;
     case 'guardian_1_relationship':
@@ -758,6 +833,7 @@ function getMemberReviewValue(member: SecretaryMemberProfile, key: string): stri
 function isRequiredFieldForMember(fieldKey: string, member: SecretaryMemberProfile) {
   if (fieldKey === 'local_address') return member.housing_type === 'off_campus';
   if (fieldKey === 'campus_housing') return member.housing_type === 'on_campus' || member.housing_type === 'chapter_housing';
+  if (fieldKey === 'guardian_2_name') return true;
   return ![
     'preferred_name',
     'instagram',
@@ -827,13 +903,39 @@ function getCycleStats(activeMembers: SecretaryMemberProfile[], submissions: Ver
   return { completeCount, notStartedCount, inProgressCount, needsReviewCount, optionalFlagCount };
 }
 
+function getSubmissionSignals(member: SecretaryMemberProfile, submission: VerificationSubmission) {
+  const fields = buildReviewFields(member, submission);
+  return {
+    missing: fields.filter(field => field.required && field.missing).length,
+    flagged: submission.optional_review_flags.length,
+    notes: countFieldNotes(submission)
+  };
+}
+
 function getDisplayName(member: SecretaryMemberProfile) {
   return `${member.preferred_name || member.legal_first_name} ${member.legal_last_name}`;
 }
 
-function formatDateTime(value?: string | null) {
-  if (!value) return 'Submitted missing';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value));
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function formatRelativeSubmission(value?: string | null) {
+  if (!value) return 'Submitted';
+  const submitted = new Date(value).getTime();
+  if (Number.isNaN(submitted)) return 'Submitted';
+  const diffMs = Math.max(Date.now() - submitted, 0);
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 60) return `Submitted ${Math.max(minutes, 1)}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Submitted ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Submitted ${days}d ago`;
 }
 
 function formatLabel(value: string) {
@@ -851,7 +953,7 @@ function getFieldStatus(field: VerificationReviewField, note: string) {
   if (note.trim()) return 'Note';
   if (field.required && field.missing) return 'Missing';
   if (field.flagged) return 'Flag';
-  return 'OK';
+  return 'Complete';
 }
 
 function countFieldNotes(submission: VerificationSubmission) {
