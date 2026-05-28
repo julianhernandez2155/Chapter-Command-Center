@@ -89,6 +89,8 @@ interface VerificationReviewField {
   currentValue: string | boolean | number | null;
   changed: boolean;
   flagged: boolean;
+  missing: boolean;
+  required: boolean;
   inputType: ReviewFieldInputType;
   editable?: ReviewEditableTarget;
 }
@@ -647,18 +649,20 @@ export const SecretaryMemberRegistry = () => {
     submissionId,
     decision,
     note,
-    fields
+    fields,
+    fieldNotes
   }: {
     submissionId: string;
     decision: VerificationReviewDecision;
     note?: string | null;
     fields?: string[];
+    fieldNotes?: Record<string, string>;
   }) => {
     if (!currentMember) return;
 
     setSavingId(submissionId);
     try {
-      await reviewVerificationSubmission({ submissionId, decision, note, fields });
+      await reviewVerificationSubmission({ submissionId, decision, note, fields, fieldNotes });
       await loadVerificationCycle();
       await loadMembers();
     } catch (err) {
@@ -1637,6 +1641,7 @@ const VerificationCycleWorkflow = ({
     decision: VerificationReviewDecision;
     note?: string | null;
     fields?: string[];
+    fieldNotes?: Record<string, string>;
   }) => void;
   onSaveField: (member: SecretaryMemberProfile, field: VerificationReviewField, value: string | boolean) => void;
   onOpenMissingView: () => void;
@@ -1644,9 +1649,8 @@ const VerificationCycleWorkflow = ({
   const [termLabel, setTermLabel] = useState(getDefaultTermLabel);
   const [dueDate, setDueDate] = useState(getDefaultDueDate);
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
-  const [reviewNote, setReviewNote] = useState('');
   const [reviewError, setReviewError] = useState<string | null>(null);
-  const [selectedReviewFields, setSelectedReviewFields] = useState<Set<string>>(new Set());
+  const [fieldNotes, setFieldNotes] = useState<Record<string, string>>({});
   const submissionByMemberId = useMemo(
     () => new Map(submissions.map(submission => [submission.member_id, submission])),
     [submissions]
@@ -1680,18 +1684,18 @@ const VerificationCycleWorkflow = ({
   }, [activeReviewId, reviewRows]);
 
   useEffect(() => {
-    setReviewNote('');
     setReviewError(null);
-    setSelectedReviewFields(new Set());
+    setFieldNotes(activeReview?.submission.needs_changes_field_notes ?? {});
   }, [activeReview?.submission.id]);
 
-  const toggleReviewField = (fieldKey: string) => {
-    setSelectedReviewFields(current => {
-      const next = new Set(current);
-      if (next.has(fieldKey)) {
-        next.delete(fieldKey);
+  const updateFieldNote = (fieldKey: string, note: string) => {
+    setFieldNotes(current => {
+      const next = { ...current };
+      const cleanNote = note.trimStart();
+      if (cleanNote.trim().length === 0) {
+        delete next[fieldKey];
       } else {
-        next.add(fieldKey);
+        next[fieldKey] = cleanNote;
       }
       return next;
     });
@@ -1705,9 +1709,20 @@ const VerificationCycleWorkflow = ({
 
   const submitReviewDecision = (decision: VerificationReviewDecision) => {
     if (!activeReview) return;
-    const requiresNote = decision === 'needs_changes' || decision === 'exempted';
-    if (requiresNote && reviewNote.trim().length === 0) {
-      setReviewError(decision === 'needs_changes' ? 'Add a short note for the member.' : 'Add an exemption reason.');
+    const cleanedFieldNotes = Object.fromEntries(
+      Object.entries(fieldNotes)
+        .map(([field, note]) => [field, String(note).trim()] as const)
+        .filter(([, note]) => note.length > 0)
+    );
+    const notedFields = Object.keys(cleanedFieldNotes);
+
+    if (decision === 'needs_changes' && notedFields.length === 0) {
+      setReviewError('Add a note on at least one field.');
+      return;
+    }
+
+    if (decision === 'exempted' && notedFields.length === 0) {
+      setReviewError('Add a field note or use approve.');
       return;
     }
 
@@ -1715,8 +1730,11 @@ const VerificationCycleWorkflow = ({
     onReview({
       submissionId: activeReview.submission.id,
       decision,
-      note: reviewNote,
-      fields: [...selectedReviewFields]
+      note: decision === 'needs_changes'
+        ? `${notedFields.length} field ${notedFields.length === 1 ? 'needs' : 'need'} member attention.`
+        : notedFields.map(field => `${formatLabel(field)}: ${cleanedFieldNotes[field]}`).join('\n'),
+      fields: notedFields,
+      fieldNotes: cleanedFieldNotes
     });
     skipReview();
   };
@@ -1831,15 +1849,15 @@ const VerificationCycleWorkflow = ({
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-black text-sm">{getDisplayName(member)}</p>
-                    <p className={cn(
-                      'text-[11px] font-bold mt-1',
-                      activeReview?.submission.id === submission.id ? 'text-white/75' : 'text-on-surface-variant'
-                    )}>
-                      Submitted {formatDateTime(submission.submitted_at)} · {submission.changed_fields.length} changed
-                    </p>
-                  </div>
+	                  <div>
+	                    <p className="font-black text-sm">{getDisplayName(member)}</p>
+	                    <p className={cn(
+	                      'text-[11px] font-bold mt-1',
+	                      activeReview?.submission.id === submission.id ? 'text-white/75' : 'text-on-surface-variant'
+	                    )}>
+	                      {countReviewFieldNotes(submission)} notes · Submitted {formatDateTime(submission.submitted_at)}
+	                    </p>
+	                  </div>
                   {submission.optional_review_flags.length > 0 && (
                     <span className={cn(
                       'rounded-full px-2 py-1 text-[9px] font-black uppercase',
@@ -1858,13 +1876,11 @@ const VerificationCycleWorkflow = ({
         <VerificationReviewDetail
           activeReview={activeReview}
           fields={activeReviewFields}
-          selectedFields={selectedReviewFields}
-          reviewNote={reviewNote}
+          fieldNotes={fieldNotes}
           reviewError={reviewError}
           savingId={savingId}
           openRows={openRows}
-          onToggleField={toggleReviewField}
-          onReviewNoteChange={setReviewNote}
+          onFieldNoteChange={updateFieldNote}
           onApprove={() => submitReviewDecision('approved')}
           onRequestChanges={() => submitReviewDecision('needs_changes')}
           onExempt={() => submitReviewDecision('exempted')}
@@ -1879,13 +1895,11 @@ const VerificationCycleWorkflow = ({
 const VerificationReviewDetail = ({
   activeReview,
   fields,
-  selectedFields,
-  reviewNote,
+  fieldNotes,
   reviewError,
   savingId,
   openRows,
-  onToggleField,
-  onReviewNoteChange,
+  onFieldNoteChange,
   onApprove,
   onRequestChanges,
   onExempt,
@@ -1894,21 +1908,23 @@ const VerificationReviewDetail = ({
 }: {
   activeReview: { member: SecretaryMemberProfile; submission: VerificationSubmission } | null;
   fields: VerificationReviewField[];
-  selectedFields: Set<string>;
-  reviewNote: string;
+  fieldNotes: Record<string, string>;
   reviewError: string | null;
   savingId: string | null;
   openRows: Array<{ member: SecretaryMemberProfile; submission: VerificationSubmission | undefined }>;
-  onToggleField: (fieldKey: string) => void;
-  onReviewNoteChange: (value: string) => void;
+  onFieldNoteChange: (fieldKey: string, value: string) => void;
   onApprove: () => void;
   onRequestChanges: () => void;
   onExempt: () => void;
   onSkip: () => void;
   onSaveField: (member: SecretaryMemberProfile, field: VerificationReviewField, value: string | boolean) => void;
-}) => (
+}) => {
+  const noteCount = Object.values(fieldNotes).filter(note => note.trim().length > 0).length;
+  const sections = groupReviewFieldsBySection(fields, fieldNotes);
+
+  return (
   <div className="space-y-4">
-    <div className="bg-surface-container-low rounded-xl p-4">
+    <div className="bg-surface-container-low rounded-2xl p-5">
       {!activeReview ? (
         <div className="min-h-64 flex items-center justify-center text-center text-on-surface-variant">
           <div>
@@ -1924,7 +1940,7 @@ const VerificationReviewDetail = ({
               <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Current Review</p>
               <h4 className="mt-1 text-2xl font-black text-on-surface">{getDisplayName(activeReview.member)}</h4>
               <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                Submitted {formatDateTime(activeReview.submission.submitted_at)} · {activeReview.submission.changed_fields.length} changed · {activeReview.submission.optional_review_flags.length} optional flags
+                Inspect the profile, edit obvious fixes, or tag exact fields to send back.
               </p>
             </div>
             <button
@@ -1944,8 +1960,13 @@ const VerificationReviewDetail = ({
             </div>
           )}
 
-          {(activeReview.submission.optional_review_flags.length > 0 || activeReview.submission.needs_changes_note) && (
+          {(activeReview.submission.optional_review_flags.length > 0 || activeReview.submission.needs_changes_note || noteCount > 0) && (
             <div className="mt-4 flex flex-wrap gap-2">
+              {noteCount > 0 && (
+                <span className="rounded-full bg-error/10 text-error px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
+                  {noteCount} field {noteCount === 1 ? 'note' : 'notes'}
+                </span>
+              )}
               {activeReview.submission.optional_review_flags.map(flag => (
                 <span key={flag} className="rounded-full bg-primary/10 text-primary px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
                   {formatLabel(flag)}
@@ -1959,39 +1980,38 @@ const VerificationReviewDetail = ({
             </div>
           )}
 
-          <div className="mt-5 overflow-x-auto rounded-xl border border-outline-variant/40">
-            <div className="min-w-[980px] grid grid-cols-[40px_minmax(170px,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_160px] bg-surface-container-lowest px-3 py-2 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
-              <span />
-              <span>Field</span>
-              <span>Submitted</span>
-              <span>Current</span>
-              <span>Edit</span>
-            </div>
-            <div className="min-w-[980px] divide-y divide-outline-variant/40">
-              {fields.map(field => (
-                <VerificationReviewFieldRow
-                  key={field.key}
-                  member={activeReview.member}
-                  field={field}
-                  selected={selectedFields.has(field.key)}
-                  saving={savingId === `${activeReview.member.id}-${field.key}`}
-                  onToggle={() => onToggleField(field.key)}
-                  onSave={value => onSaveField(activeReview.member, field, value)}
-                />
-              ))}
-            </div>
+          <div className="mt-6 space-y-6">
+            {sections.map(section => (
+              <section key={section.group} className="bg-surface-container-lowest rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-secondary">{section.group}</p>
+                    <p className="mt-1 text-xs font-bold text-on-surface-variant">
+                      {section.completeCount}/{section.fields.length} filled · {section.noteCount} notes
+                    </p>
+                  </div>
+                  <span className={cn(
+                    'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]',
+                    section.noteCount > 0 ? 'bg-error/10 text-error' : section.completeCount === section.fields.length ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'
+                  )}>
+                    {section.noteCount > 0 ? 'Needs member' : section.completeCount === section.fields.length ? 'Looks filled' : 'Check blanks'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {section.fields.map(field => (
+                    <VerificationReviewFieldRow
+                      key={field.key}
+                      field={field}
+                      note={fieldNotes[field.key] ?? ''}
+                      saving={savingId === `${activeReview.member.id}-${field.key}`}
+                      onNoteChange={value => onFieldNoteChange(field.key, value)}
+                      onSave={value => onSaveField(activeReview.member, field, value)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
-
-          <label className="block mt-5">
-            <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">Review note</span>
-            <textarea
-              value={reviewNote}
-              onChange={event => onReviewNoteChange(event.target.value)}
-              rows={3}
-              placeholder="Required for request changes or exempt."
-              className="mt-2 w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface font-semibold outline-none focus:ring-1 focus:ring-primary/60 resize-none placeholder:text-on-surface-variant/50"
-            />
-          </label>
           {reviewError && <p className="mt-2 text-xs font-bold text-error">{reviewError}</p>}
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -2011,7 +2031,7 @@ const VerificationReviewDetail = ({
               className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <AlertCircle size={14} />}
-              Request Changes
+              Request Changes{noteCount > 0 ? ` (${noteCount})` : ''}
             </button>
             <button
               type="button"
@@ -2048,95 +2068,127 @@ const VerificationReviewDetail = ({
       )}
     </div>
   </div>
-);
+  );
+};
 
 const VerificationReviewFieldRow = ({
-  member,
   field,
-  selected,
+  note,
   saving,
-  onToggle,
+  onNoteChange,
   onSave
 }: {
   key?: string;
-  member: SecretaryMemberProfile;
   field: VerificationReviewField;
-  selected: boolean;
+  note: string;
   saving: boolean;
-  onToggle: () => void;
+  onNoteChange: (value: string) => void;
   onSave: (value: string | boolean) => void;
 }) => {
   const [draft, setDraft] = useState<string | boolean>(getReviewInputValue(field.currentValue, field.inputType));
+  const [editing, setEditing] = useState(false);
+  const [noting, setNoting] = useState(Boolean(note));
 
   useEffect(() => {
     setDraft(getReviewInputValue(field.currentValue, field.inputType));
   }, [field.currentValue, field.inputType]);
 
+  useEffect(() => {
+    setNoting(Boolean(note));
+  }, [note]);
+
   const valueChanged = String(draft) !== String(getReviewInputValue(field.currentValue, field.inputType));
 
   return (
     <div className={cn(
-      'grid grid-cols-[40px_minmax(170px,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_160px] gap-3 px-3 py-3 text-sm items-start',
-      field.changed || field.flagged ? 'bg-primary/5' : 'bg-surface-container-low'
+      'rounded-xl px-4 py-3 text-sm',
+      note ? 'bg-error/10' : field.required && field.missing ? 'bg-primary/10' : 'bg-surface-container-low'
     )}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="mt-1 text-primary"
-        title="Mark for requested changes"
-      >
-        {selected ? <CheckSquare size={16} /> : <Square size={16} />}
-      </button>
-      <div>
-        <p className="font-black text-on-surface">{field.label}</p>
-        <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant mt-1">{field.group}</p>
-        {(field.changed || field.flagged) && (
-          <p className="text-[10px] font-black uppercase tracking-[0.1rem] text-primary mt-2">
-            {field.flagged ? 'Flagged' : 'Changed'}
+      <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)_auto] gap-3 lg:items-start">
+        <div>
+          <p className="font-black text-on-surface">{field.label}</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant mt-1">
+            {field.required ? 'Required' : 'Optional'}
+            {field.missing ? ' · Missing' : ''}
           </p>
-        )}
-      </div>
-      <p className="font-semibold text-on-surface break-words">{formatReviewValue(field.submittedValue)}</p>
-      <p className="font-semibold text-on-surface-variant break-words">{formatReviewValue(field.currentValue)}</p>
-      <div>
-        {field.editable ? (
-          <div className="flex items-center gap-2">
-            {field.inputType === 'checkbox' ? (
+        </div>
+
+        <div>
+          {editing && field.editable ? (
+            <div className="flex items-center gap-2">
+              {field.inputType === 'checkbox' ? (
+                <button
+                  type="button"
+                  onClick={() => setDraft(!Boolean(draft))}
+                  className={cn(
+                    'min-h-10 min-w-10 rounded-full flex items-center justify-center',
+                    Boolean(draft) ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
+                  )}
+                  title="Toggle value"
+                >
+                  {Boolean(draft) ? <CheckSquare size={15} /> : <Square size={15} />}
+                </button>
+              ) : (
+                <input
+                  type={field.inputType}
+                  value={String(draft)}
+                  onChange={event => setDraft(event.target.value)}
+                  className="min-w-0 flex-1 bg-surface-container-lowest rounded-xl px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+                  autoFocus
+                />
+              )}
               <button
                 type="button"
-                onClick={() => setDraft(!Boolean(draft))}
-                className={cn(
-                  'h-9 w-9 rounded-full flex items-center justify-center',
-                  Boolean(draft) ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
-                )}
-                title="Toggle value"
+                onClick={() => {
+                  onSave(draft);
+                  setEditing(false);
+                }}
+                disabled={saving || !valueChanged}
+                className="min-h-10 min-w-10 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40"
+                title="Save field"
               >
-                {Boolean(draft) ? <CheckSquare size={15} /> : <Square size={15} />}
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               </button>
-            ) : (
-              <input
-                type={field.inputType}
-                value={String(draft)}
-                onChange={event => setDraft(event.target.value)}
-                className="min-w-0 flex-1 bg-surface-container-lowest rounded-lg px-3 py-2 text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
-              />
-            )}
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => onSave(draft)}
-              disabled={saving || !valueChanged}
-              className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40"
-              title="Save field"
+              onClick={() => field.editable && setEditing(true)}
+              className="text-left w-full rounded-xl bg-surface-container-lowest px-3 py-2 font-semibold text-on-surface hover:bg-surface-container-high transition-colors"
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {formatReviewFieldValue(field)}
             </button>
-          </div>
-        ) : (
-          <span className="text-[11px] font-bold text-on-surface-variant">Read only</span>
-        )}
-        <span className="sr-only">{member.id}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setNoting(current => !current)}
+            className={cn(
+              'min-h-10 rounded-full px-3 text-[10px] font-black uppercase tracking-[0.12rem] transition-colors',
+              note ? 'bg-error text-white' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high'
+            )}
+          >
+            {note ? 'Note added' : 'Add note'}
+          </button>
+        </div>
       </div>
-    </div>
+
+      {noting && (
+        <label className="block mt-3">
+          <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-error">Member note</span>
+          <textarea
+            value={note}
+            onChange={event => onNoteChange(event.target.value)}
+            rows={2}
+            placeholder="Tell the member exactly what to fix for this field."
+            className="mt-2 w-full rounded-xl bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+          />
+        </label>
+      )}
+
+      </div>
   );
 };
 
@@ -2788,6 +2840,8 @@ function reviewMemberField(
     currentValue: null,
     changed: false,
     flagged: false,
+    missing: false,
+    required: false,
     inputType,
     editable: { table: 'members', field: key }
   };
@@ -2809,6 +2863,8 @@ function reviewGuardianField(
     currentValue: null,
     changed: false,
     flagged: false,
+    missing: false,
+    required: false,
     inputType,
     editable: { table: 'guardian', order, field }
   };
@@ -2828,21 +2884,16 @@ function buildVerificationReviewFields(
   const memberFields = VERIFICATION_REVIEW_MEMBER_FIELDS.map(field => {
     const submittedValue = getSnapshotValue(submission.snapshot, field.key);
     const currentValue = getMemberReviewValue(member, field.key);
-    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields);
+    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields, isRequiredReviewFieldForMember(field.key, member));
   });
 
   const guardianFields = VERIFICATION_REVIEW_GUARDIAN_FIELDS.map(field => {
     const submittedValue = getSnapshotGuardianValue(submission.snapshot, field.key);
     const currentValue = getMemberReviewValue(member, field.key);
-    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields);
+    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields, isRequiredReviewFieldForMember(field.key, member));
   });
 
-  return [...memberFields, ...guardianFields].filter(field =>
-    field.changed ||
-    field.flagged ||
-    hasReviewValue(field.submittedValue) ||
-    hasReviewValue(field.currentValue)
-  );
+  return [...memberFields, ...guardianFields];
 }
 
 function hydrateReviewField(
@@ -2850,15 +2901,54 @@ function hydrateReviewField(
   submittedValue: string | boolean | number | null,
   currentValue: string | boolean | number | null,
   changedFields: Set<string>,
-  flaggedFields: Set<string>
+  flaggedFields: Set<string>,
+  required: boolean
 ): VerificationReviewField {
   return {
     ...field,
     submittedValue,
     currentValue,
     changed: changedFields.has(field.key) || normalizeReviewComparable(submittedValue) !== normalizeReviewComparable(currentValue),
-    flagged: flaggedFields.has(field.key)
+    flagged: flaggedFields.has(field.key),
+    missing: !hasReviewValue(currentValue),
+    required
   };
+}
+
+function isRequiredReviewFieldForMember(fieldKey: string, member: SecretaryMemberProfile) {
+  if (fieldKey === 'local_address') return member.housing_type === 'off_campus';
+  if (fieldKey === 'campus_housing') return member.housing_type === 'on_campus' || member.housing_type === 'chapter_housing';
+  return ![
+    'preferred_name',
+    'instagram',
+    'snapchat',
+    'linkedin',
+    'guardian_2_name',
+    'guardian_2_relationship',
+    'guardian_2_phone',
+    'guardian_2_email',
+    'parent_outreach_consent'
+  ].includes(fieldKey);
+}
+
+const REVIEW_SECTION_ORDER = ['Identity', 'Contact', 'Housing', 'Academic', 'Sizes', 'Social', 'Family'];
+
+function groupReviewFieldsBySection(fields: VerificationReviewField[], fieldNotes: Record<string, string>) {
+  return REVIEW_SECTION_ORDER
+    .map(group => {
+      const sectionFields = fields.filter(field => field.group === group);
+      return {
+        group: group === 'Sizes' ? 'Apparel' : group,
+        fields: sectionFields,
+        completeCount: sectionFields.filter(field => !field.missing).length,
+        noteCount: sectionFields.filter(field => Boolean(fieldNotes[field.key]?.trim())).length
+      };
+    })
+    .filter(section => section.fields.length > 0);
+}
+
+function countReviewFieldNotes(submission: VerificationSubmission) {
+  return Object.values(submission.needs_changes_field_notes ?? {}).filter(note => note.trim().length > 0).length;
 }
 
 function getSnapshotValue(snapshot: Record<string, unknown>, key: string) {
@@ -2932,6 +3022,13 @@ function formatReviewValue(value: string | boolean | number | null) {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return String(value);
   return value && value.trim().length > 0 ? value : 'Missing';
+}
+
+function formatReviewFieldValue(field: VerificationReviewField) {
+  if (field.key === 'housing_type' && typeof field.currentValue === 'string') {
+    return formatLabel(field.currentValue);
+  }
+  return formatReviewValue(field.currentValue);
 }
 
 function getReviewInputValue(value: string | boolean | number | null, inputType: ReviewFieldInputType) {

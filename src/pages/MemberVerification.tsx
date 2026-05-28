@@ -19,8 +19,10 @@ import {
   VerificationGateStatus,
   VerificationOptionalReviewField,
   VerificationRequiredField,
+  VerificationSubmission,
   fetchMyVerificationContacts,
   fetchMyVerificationGateStatus,
+  fetchMyVerificationSubmission,
   fetchMyVerificationSelfProfile,
   saveMyVerificationContacts,
   saveMyVerificationSubmission,
@@ -121,6 +123,7 @@ export const MemberVerification = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<VerificationFieldErrors>({});
+  const [reviewSubmission, setReviewSubmission] = useState<VerificationSubmission | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -135,13 +138,17 @@ export const MemberVerification = () => {
         ]);
         const contacts = selfProfile ? await fetchMyVerificationContacts(selfProfile.id) : emptyVerificationContacts();
         const nextForm = selfProfile ? toForm(selfProfile, contacts) : null;
+        const existingSubmission = freshGate && selfProfile
+          ? await fetchMyVerificationSubmission(freshGate.cycle_id, freshGate.member_id)
+          : null;
 
         if (!isMounted) return;
         setGateStatus(freshGate);
         setProfile(selfProfile);
         setForm(nextForm);
+        setReviewSubmission(existingSubmission);
 
-        if (freshGate?.is_gate_required && selfProfile && nextForm) {
+        if (freshGate?.is_gate_required && selfProfile && nextForm && existingSubmission?.status !== 'needs_changes') {
           await saveMyVerificationSubmission({
             cycleId: freshGate.cycle_id,
             memberId: freshGate.member_id,
@@ -179,6 +186,8 @@ export const MemberVerification = () => {
     () => form && gateStatus ? getActiveRequiredFields(form, gateStatus.required_fields) : [],
     [form, gateStatus]
   );
+  const secretaryFieldNotes: Record<string, string> = reviewSubmission?.needs_changes_field_notes ?? gateStatus?.needs_changes_field_notes ?? {};
+  const secretaryFieldNoteCount = Object.values(secretaryFieldNotes).filter(note => note.trim().length > 0).length;
 
   if (!member) {
     return <Navigate to="/dashboard" replace />;
@@ -316,22 +325,32 @@ export const MemberVerification = () => {
                 </div>
               )}
 
+              {secretaryFieldNoteCount > 0 && (
+                <div className="bg-primary/10 text-on-surface rounded-[1.5rem] p-5 flex gap-3 font-bold">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5 text-primary" />
+                  <div>
+                    <p className="text-sm font-black">Secretary requested updates on {secretaryFieldNoteCount} {secretaryFieldNoteCount === 1 ? 'field' : 'fields'}.</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Fix the tagged fields, then resubmit verification.</p>
+                  </div>
+                </div>
+              )}
+
               <VerificationSection title="Identity">
                 <ReadonlyField label="Legal name" value={`${profile.legal_first_name} ${profile.legal_last_name}`} />
                 <ReadonlyField label="SUID" value={profile.suid} />
                 <ReadonlyField label="School email" value={profile.google_email} />
-                <TextField label="Preferred name" value={form.preferred_name} error={fieldErrors.preferred_name} onChange={value => updateForm('preferred_name', value)} />
+                <TextField label="Preferred name" value={form.preferred_name} error={fieldErrors.preferred_name} note={secretaryFieldNotes.preferred_name} onChange={value => updateForm('preferred_name', value)} />
               </VerificationSection>
 
               <VerificationSection title="Contact">
-                <TextField required label="Personal email" value={form.personal_email} error={fieldErrors.personal_email} onChange={value => updateForm('personal_email', value)} />
-                <TextField required label="Phone" value={form.phone} error={fieldErrors.phone} onChange={value => updateForm('phone', value)} />
-                <TextField required label="Home city" value={form.home_city} error={fieldErrors.home_city} onChange={value => updateForm('home_city', value)} />
-                <OptionSelectField required label="Home state" value={form.home_state} error={fieldErrors.home_state} options={[{ value: '', label: 'Select state' }, ...US_STATE_OPTIONS]} onChange={value => updateForm('home_state', value)} />
+                <TextField required label="Personal email" value={form.personal_email} error={fieldErrors.personal_email} note={secretaryFieldNotes.personal_email} onChange={value => updateForm('personal_email', value)} />
+                <TextField required label="Phone" value={form.phone} error={fieldErrors.phone} note={secretaryFieldNotes.phone} onChange={value => updateForm('phone', value)} />
+                <TextField required label="Home city" value={form.home_city} error={fieldErrors.home_city} note={secretaryFieldNotes.home_city} onChange={value => updateForm('home_city', value)} />
+                <OptionSelectField required label="Home state" value={form.home_state} error={fieldErrors.home_state} note={secretaryFieldNotes.home_state} options={[{ value: '', label: 'Select state' }, ...US_STATE_OPTIONS]} onChange={value => updateForm('home_state', value)} />
               </VerificationSection>
 
               <VerificationSection title="Housing">
-                <HousingTypeField value={form.housing_type} error={fieldErrors.housing_type} onChange={value => updateForm('housing_type', value)} />
+                <HousingTypeField value={form.housing_type} error={fieldErrors.housing_type} note={secretaryFieldNotes.housing_type} onChange={value => updateForm('housing_type', value)} />
                 {form.housing_type === 'on_campus' && (
                   <AddressInput
                     required
@@ -339,6 +358,7 @@ export const MemberVerification = () => {
                     value={form.campus_housing}
                     mode="campus"
                     error={fieldErrors.campus_housing}
+                    note={secretaryFieldNotes.campus_housing}
                     onChange={value => updateForm('campus_housing', value)}
                   />
                 )}
@@ -350,6 +370,7 @@ export const MemberVerification = () => {
                       value={form.local_address}
                       mode="street"
                       error={fieldErrors.local_address}
+                      note={secretaryFieldNotes.local_address}
                       onChange={value => updateForm('local_address', value)}
                     />
                     <AddressInput
@@ -357,6 +378,7 @@ export const MemberVerification = () => {
                       value={form.campus_housing}
                       mode="campus"
                       error={fieldErrors.campus_housing}
+                      note={secretaryFieldNotes.campus_housing}
                       onChange={value => updateForm('campus_housing', value)}
                     />
                   </>
@@ -368,49 +390,51 @@ export const MemberVerification = () => {
                     value={form.campus_housing}
                     mode="chapter_room"
                     error={fieldErrors.campus_housing}
+                    note={secretaryFieldNotes.campus_housing}
                     onChange={value => updateForm('campus_housing', value)}
                   />
                 )}
               </VerificationSection>
 
               <VerificationSection title="Academic">
-                <TextField required label="School" value={form.school} error={fieldErrors.school} onChange={value => updateForm('school', value)} />
-                <TextField required label="Major" value={form.major} error={fieldErrors.major} onChange={value => updateForm('major', value)} />
-                <TextField required label="Graduation year" value={form.graduation_year} error={fieldErrors.graduation_year} inputMode="numeric" onChange={value => updateForm('graduation_year', value)} />
+                <TextField required label="School" value={form.school} error={fieldErrors.school} note={secretaryFieldNotes.school} onChange={value => updateForm('school', value)} />
+                <TextField required label="Major" value={form.major} error={fieldErrors.major} note={secretaryFieldNotes.major} onChange={value => updateForm('major', value)} />
+                <TextField required label="Graduation year" value={form.graduation_year} error={fieldErrors.graduation_year} note={secretaryFieldNotes.graduation_year} inputMode="numeric" onChange={value => updateForm('graduation_year', value)} />
                 <OptionSelectField
                   required
                   label="Expected grad term"
                   value={form.expected_graduation_term.split(' ')[0]}
                   error={fieldErrors.expected_graduation_term}
+                  note={secretaryFieldNotes.expected_graduation_term}
                   options={[{ value: '', label: 'Select term' }, ...GRADUATION_TERM_OPTIONS.map(term => ({ value: term, label: term }))]}
                   onChange={value => updateForm('expected_graduation_term', value && form.graduation_year ? `${value} ${form.graduation_year}` : value)}
                 />
               </VerificationSection>
 
               <VerificationSection title="Apparel & Social">
-                <SelectField required label="T-shirt size" value={form.tshirt_size} error={fieldErrors.tshirt_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('tshirt_size', value)} />
-                <SelectField required label="Hoodie size" value={form.hoodie_size} error={fieldErrors.hoodie_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('hoodie_size', value)} />
-                <TextField label="Instagram" value={form.instagram} error={fieldErrors.instagram} onChange={value => updateForm('instagram', value)} />
-                <TextField label="Snapchat" value={form.snapchat} error={fieldErrors.snapchat} onChange={value => updateForm('snapchat', value)} />
-                <TextField label="LinkedIn" value={form.linkedin} error={fieldErrors.linkedin} onChange={value => updateForm('linkedin', value)} />
+                <SelectField required label="T-shirt size" value={form.tshirt_size} error={fieldErrors.tshirt_size} note={secretaryFieldNotes.tshirt_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('tshirt_size', value)} />
+                <SelectField required label="Hoodie size" value={form.hoodie_size} error={fieldErrors.hoodie_size} note={secretaryFieldNotes.hoodie_size} options={['', ...APPAREL_SIZE_OPTIONS]} onChange={value => updateForm('hoodie_size', value)} />
+                <TextField label="Instagram" value={form.instagram} error={fieldErrors.instagram} note={secretaryFieldNotes.instagram} onChange={value => updateForm('instagram', value)} />
+                <TextField label="Snapchat" value={form.snapchat} error={fieldErrors.snapchat} note={secretaryFieldNotes.snapchat} onChange={value => updateForm('snapchat', value)} />
+                <TextField label="LinkedIn" value={form.linkedin} error={fieldErrors.linkedin} note={secretaryFieldNotes.linkedin} onChange={value => updateForm('linkedin', value)} />
               </VerificationSection>
 
               <VerificationSection title="Parent / Guardian Contact">
                 <ContactGroup title="Parent / Guardian 1">
-                  <TextField required label="First name" value={form.guardian_1_first_name} error={fieldErrors.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
-                  <TextField required label="Last name" value={form.guardian_1_last_name} error={fieldErrors.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
-                  <TextField required label="Phone" value={form.guardian_1_phone} error={fieldErrors.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
-                  <TextField required label="Email" value={form.guardian_1_email} error={fieldErrors.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
-                  <OptionSelectField required label="Relationship" value={form.guardian_1_relationship} error={fieldErrors.guardian_1_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_1_relationship', value)} />
-                  <ConsentField checked={form.guardian_1_outreach_consent} onChange={value => updateForm('guardian_1_outreach_consent', value)} />
+                  <TextField required label="First name" value={form.guardian_1_first_name} error={fieldErrors.guardian_1_first_name} note={secretaryFieldNotes.guardian_1_name ?? secretaryFieldNotes.guardian_1_first_name} onChange={value => updateForm('guardian_1_first_name', value)} />
+                  <TextField required label="Last name" value={form.guardian_1_last_name} error={fieldErrors.guardian_1_last_name} note={secretaryFieldNotes.guardian_1_name ?? secretaryFieldNotes.guardian_1_last_name} onChange={value => updateForm('guardian_1_last_name', value)} />
+                  <TextField required label="Phone" value={form.guardian_1_phone} error={fieldErrors.guardian_1_phone} note={secretaryFieldNotes.guardian_1_phone} onChange={value => updateForm('guardian_1_phone', value)} />
+                  <TextField required label="Email" value={form.guardian_1_email} error={fieldErrors.guardian_1_email} note={secretaryFieldNotes.guardian_1_email} onChange={value => updateForm('guardian_1_email', value)} />
+                  <OptionSelectField required label="Relationship" value={form.guardian_1_relationship} error={fieldErrors.guardian_1_relationship} note={secretaryFieldNotes.guardian_1_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_1_relationship', value)} />
+                  <ConsentField checked={form.guardian_1_outreach_consent} note={secretaryFieldNotes.parent_outreach_consent} onChange={value => updateForm('guardian_1_outreach_consent', value)} />
                 </ContactGroup>
 
                 <ContactGroup title="Parent / Guardian 2">
-                  <TextField label="First name" value={form.guardian_2_first_name} error={fieldErrors.guardian_2_first_name} onChange={value => updateForm('guardian_2_first_name', value)} />
-                  <TextField label="Last name" value={form.guardian_2_last_name} error={fieldErrors.guardian_2_last_name} onChange={value => updateForm('guardian_2_last_name', value)} />
-                  <TextField label="Phone" value={form.guardian_2_phone} error={fieldErrors.guardian_2_phone} onChange={value => updateForm('guardian_2_phone', value)} />
-                  <TextField label="Email" value={form.guardian_2_email} error={fieldErrors.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
-                  <OptionSelectField label="Relationship" value={form.guardian_2_relationship} error={fieldErrors.guardian_2_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_2_relationship', value)} />
+                  <TextField label="First name" value={form.guardian_2_first_name} error={fieldErrors.guardian_2_first_name} note={secretaryFieldNotes.guardian_2_name ?? secretaryFieldNotes.guardian_2_first_name} onChange={value => updateForm('guardian_2_first_name', value)} />
+                  <TextField label="Last name" value={form.guardian_2_last_name} error={fieldErrors.guardian_2_last_name} note={secretaryFieldNotes.guardian_2_name ?? secretaryFieldNotes.guardian_2_last_name} onChange={value => updateForm('guardian_2_last_name', value)} />
+                  <TextField label="Phone" value={form.guardian_2_phone} error={fieldErrors.guardian_2_phone} note={secretaryFieldNotes.guardian_2_phone} onChange={value => updateForm('guardian_2_phone', value)} />
+                  <TextField label="Email" value={form.guardian_2_email} error={fieldErrors.guardian_2_email} note={secretaryFieldNotes.guardian_2_email} onChange={value => updateForm('guardian_2_email', value)} />
+                  <OptionSelectField label="Relationship" value={form.guardian_2_relationship} error={fieldErrors.guardian_2_relationship} note={secretaryFieldNotes.guardian_2_relationship} options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIP_OPTIONS.map(option => ({ value: option, label: option }))]} onChange={value => updateForm('guardian_2_relationship', value)} />
                   <ConsentField checked={form.guardian_2_outreach_consent} onChange={value => updateForm('guardian_2_outreach_consent', value)} />
                 </ContactGroup>
               </VerificationSection>
@@ -499,7 +523,8 @@ const TextField = ({
   required,
   placeholder,
   inputMode,
-  error
+  error,
+  note
 }: {
   label: string;
   value: string;
@@ -508,6 +533,7 @@ const TextField = ({
   placeholder?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   error?: string;
+  note?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -521,6 +547,7 @@ const TextField = ({
       className="mt-2 w-full min-h-12 rounded-2xl bg-surface-container-lowest px-4 py-3 text-on-surface font-bold outline-none focus:ring-2 focus:ring-primary/70"
     />
     {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+    <SecretaryFieldNote note={note} />
   </label>
 );
 
@@ -530,7 +557,8 @@ const SelectField = ({
   options,
   onChange,
   required,
-  error
+  error,
+  note
 }: {
   label: string;
   value: string;
@@ -538,6 +566,7 @@ const SelectField = ({
   onChange: (value: string) => void;
   required?: boolean;
   error?: string;
+  note?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -553,6 +582,7 @@ const SelectField = ({
       ))}
     </select>
     {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+    <SecretaryFieldNote note={note} />
   </label>
 );
 
@@ -562,7 +592,8 @@ const OptionSelectField = ({
   options,
   onChange,
   required,
-  error
+  error,
+  note
 }: {
   label: string;
   value: string;
@@ -570,6 +601,7 @@ const OptionSelectField = ({
   onChange: (value: string) => void;
   required?: boolean;
   error?: string;
+  note?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -585,17 +617,20 @@ const OptionSelectField = ({
       ))}
     </select>
     {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+    <SecretaryFieldNote note={note} />
   </label>
 );
 
 const HousingTypeField = ({
   value,
   onChange,
-  error
+  error,
+  note
 }: {
   value: '' | HousingType;
   onChange: (value: '' | HousingType) => void;
   error?: string;
+  note?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -611,28 +646,43 @@ const HousingTypeField = ({
       ))}
     </select>
     {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+    <SecretaryFieldNote note={note} />
   </label>
 );
 
-const ConsentField = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+const ConsentField = ({ checked, onChange, note }: { checked: boolean; onChange: (checked: boolean) => void; note?: string }) => (
   <CheckboxField
     label="Consent for newsletters and emergency outreach"
     checked={checked}
     onChange={onChange}
+    note={note}
   />
 );
 
-const CheckboxField = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) => (
-  <label className="rounded-2xl bg-surface-container-low px-4 py-3 min-h-12 flex items-center justify-between gap-4 cursor-pointer">
-    <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</span>
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={event => onChange(event.target.checked)}
-      className="h-5 w-5 accent-primary cursor-pointer"
-    />
-  </label>
+const CheckboxField = ({ label, checked, onChange, note }: { label: string; checked: boolean; onChange: (checked: boolean) => void; note?: string }) => (
+  <div>
+    <label className="rounded-2xl bg-surface-container-low px-4 py-3 min-h-12 flex items-center justify-between gap-4 cursor-pointer">
+      <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={event => onChange(event.target.checked)}
+        className="h-5 w-5 accent-primary cursor-pointer"
+      />
+    </label>
+    <SecretaryFieldNote note={note} />
+  </div>
 );
+
+const SecretaryFieldNote = ({ note }: { note?: string }) => {
+  if (!note?.trim()) return null;
+
+  return (
+    <div className="mt-2 rounded-2xl bg-primary/10 px-3 py-2 text-xs font-bold text-on-surface">
+      <span className="text-primary font-black">Secretary note:</span> {note.trim()}
+    </div>
+  );
+};
 
 const TextAreaField = ({
   label,

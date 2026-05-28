@@ -96,6 +96,7 @@ export interface VerificationSubmission {
   needs_changes_at: string | null;
   needs_changes_note: string | null;
   needs_changes_fields: string[];
+  needs_changes_field_notes: Record<string, string>;
   reviewed_by: string | null;
   reviewed_at: string | null;
   exempted_by: string | null;
@@ -129,6 +130,9 @@ export interface VerificationGateStatus {
   submitted_at: string | null;
   approved_at: string | null;
   exempted_at: string | null;
+  needs_changes_note?: string | null;
+  needs_changes_fields?: VerificationRequiredField[];
+  needs_changes_field_notes?: Record<string, string>;
   missing_required_fields: VerificationRequiredField[];
   optional_review_flags: VerificationOptionalReviewField[];
   is_gate_required: boolean;
@@ -250,6 +254,7 @@ export interface ReviewVerificationSubmissionInput {
   note?: string | null;
   fields?: string[];
   fieldDecisions?: Record<string, unknown>;
+  fieldNotes?: Record<string, string>;
   memberPatch?: Record<string, unknown>;
 }
 
@@ -285,6 +290,7 @@ const SUBMISSION_SELECT = `
   needs_changes_at,
   needs_changes_note,
   needs_changes_fields,
+  needs_changes_field_notes,
   reviewed_by,
   reviewed_at,
   exempted_by,
@@ -414,6 +420,24 @@ export const fetchVerificationSubmissions = async (cycleId: string): Promise<Ver
   }
 
   return (data ?? []) as VerificationSubmission[];
+};
+
+export const fetchMyVerificationSubmission = async (
+  cycleId: string,
+  memberId: string
+): Promise<VerificationSubmission | null> => {
+  const { data, error } = await supabase
+    .from('member_verification_submissions')
+    .select(SUBMISSION_SELECT)
+    .eq('cycle_id', cycleId)
+    .eq('member_id', memberId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? null) as VerificationSubmission | null;
 };
 
 export const launchVerificationCycle = async ({
@@ -655,6 +679,7 @@ export const reviewVerificationSubmission = async ({
   note = null,
   fields = [],
   fieldDecisions = {},
+  fieldNotes,
   memberPatch = {}
 }: ReviewVerificationSubmissionInput) => {
   const { error } = await supabase.rpc('review_member_verification_submission', {
@@ -662,7 +687,7 @@ export const reviewVerificationSubmission = async ({
     decision,
     review_note: normalizeNullableText(note),
     review_fields: fields,
-    field_decisions: fieldDecisions,
+    field_decisions: fieldNotes ?? fieldDecisions,
     member_patch: memberPatch
   });
 

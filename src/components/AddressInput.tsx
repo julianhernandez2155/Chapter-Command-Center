@@ -14,7 +14,8 @@ export const AddressInput = ({
   mode,
   onChange,
   required,
-  error
+  error,
+  note
 }: {
   label: string;
   value: string;
@@ -22,6 +23,7 @@ export const AddressInput = ({
   onChange: (value: string) => void;
   required?: boolean;
   error?: string;
+  note?: string;
 }) => (
   <label className="block">
     <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
@@ -35,5 +37,10 @@ export const AddressInput = ({
       className="mt-2 w-full min-h-12 rounded-2xl bg-surface-container-lowest px-4 py-3 text-on-surface font-bold outline-none focus:ring-2 focus:ring-primary/70"
     />
     {error && <span className="mt-1 block text-xs font-bold text-error">{error}</span>}
+    {note?.trim() && (
+      <div className="mt-2 rounded-2xl bg-primary/10 px-3 py-2 text-xs font-bold text-on-surface">
+        <span className="text-primary font-black">Secretary note:</span> {note.trim()}
+      </div>
+    )}
   </label>
 );
