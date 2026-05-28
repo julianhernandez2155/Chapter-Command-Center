@@ -736,14 +736,16 @@ const ProfileDrawer = ({
           </div>
 
           <div className="flex-1 px-8 py-10 flex flex-col gap-10">
-            <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-              <ProfileFact label="Class Year" value={formatClassYear(member.graduation_year)} />
-              <ProfileFact label="School" value={getSchool(member)} />
-              <ProfileFact label="Pledge Class" value={member.pledge_class} />
-              <ProfileFact label="Birthday" value={formatBirthday(member)} />
-              <ProfileFact label="Study Abroad" value={formatStudyAbroad(member)} muted={!member.current_status_type} />
-              <div className="col-span-2">
+            <div className="grid grid-cols-2 gap-x-8">
+              <div className="flex flex-col gap-8">
+                <ProfileFact label="Class Year" value={formatClassYear(member.graduation_year)} />
+                <ProfileFact label="Pledge Class" value={member.pledge_class} />
+                <ProfileFact label="Study Abroad" value={formatStudyAbroad(member)} muted={!member.current_status_type} />
+              </div>
+              <div className="flex flex-col gap-8">
+                <ProfileFact label="School" value={getSchool(member)} />
                 <ProfileFact label="Major" value={member.major} />
+                <ProfileFact label="Birthday" value={formatBirthday(member)} />
               </div>
             </div>
 
