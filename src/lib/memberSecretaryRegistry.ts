@@ -3,6 +3,7 @@ import {
   normalizeAddressText,
   normalizeApparelSize,
   normalizeEmail,
+  normalizeGraduationYear,
   normalizeGuardianRelationship,
   normalizeHousingType,
   normalizeInstagram,
@@ -10,7 +11,8 @@ import {
   normalizeNullableText,
   normalizePhone,
   normalizeSnapchat,
-  normalizeState
+  normalizeState,
+  normalizeTerm
 } from './normalizers';
 
 export type SecretaryMemberStatus = 'active' | 'inactive' | 'suspended' | 'new_member' | 'alumni' | string;
@@ -78,6 +80,8 @@ export type SecretaryMemberProfileUpdate = Partial<Pick<
   | 'preferred_name'
   | 'personal_email'
   | 'phone'
+  | 'graduation_year'
+  | 'expected_graduation_term'
   | 'school'
   | 'major'
   | 'instagram'
@@ -90,6 +94,7 @@ export type SecretaryMemberProfileUpdate = Partial<Pick<
   | 'campus_housing'
   | 'home_city'
   | 'home_state'
+  | 'parent_outreach_consent'
   | 'last_verified_at'
   | 'last_chased_at'
 >>;
@@ -284,6 +289,12 @@ const normalizeSecretaryMemberProfileUpdate = (
       case 'phone':
         normalized.phone = normalizePhone(value, key);
         break;
+      case 'graduation_year':
+        normalized.graduation_year = normalizeGraduationYear(value, key);
+        break;
+      case 'expected_graduation_term':
+        normalized.expected_graduation_term = normalizeTerm(value, key, values.graduation_year);
+        break;
       case 'housing_type':
         normalized.housing_type = normalizeHousingType(value, key);
         break;
@@ -310,6 +321,9 @@ const normalizeSecretaryMemberProfileUpdate = (
         break;
       case 'hoodie_size':
         normalized.hoodie_size = normalizeApparelSize(value, key);
+        break;
+      case 'parent_outreach_consent':
+        normalized.parent_outreach_consent = Boolean(value);
         break;
       case 'last_verified_at':
       case 'last_chased_at':

@@ -92,6 +92,12 @@ export interface VerificationSubmission {
   submitted_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  needs_changes_by: string | null;
+  needs_changes_at: string | null;
+  needs_changes_note: string | null;
+  needs_changes_fields: string[];
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   exempted_by: string | null;
   exempted_at: string | null;
   exemption_reason: string | null;
@@ -101,6 +107,7 @@ export interface VerificationSubmission {
   confirmed_fields: string[];
   correction_notes: string | null;
   snapshot: Record<string, unknown>;
+  baseline_snapshot: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -231,6 +238,21 @@ export interface GuardianContactInput {
   outreachConsent: boolean;
 }
 
+export type VerificationReviewDecision =
+  | 'approved'
+  | 'needs_changes'
+  | 'exempted'
+  | 'temporarily_unlocked';
+
+export interface ReviewVerificationSubmissionInput {
+  submissionId: string;
+  decision: VerificationReviewDecision;
+  note?: string | null;
+  fields?: string[];
+  fieldDecisions?: Record<string, unknown>;
+  memberPatch?: Record<string, unknown>;
+}
+
 const CYCLE_SELECT = `
   id,
   term_label,
@@ -259,6 +281,12 @@ const SUBMISSION_SELECT = `
   submitted_at,
   approved_by,
   approved_at,
+  needs_changes_by,
+  needs_changes_at,
+  needs_changes_note,
+  needs_changes_fields,
+  reviewed_by,
+  reviewed_at,
   exempted_by,
   exempted_at,
   exemption_reason,
@@ -268,6 +296,7 @@ const SUBMISSION_SELECT = `
   confirmed_fields,
   correction_notes,
   snapshot,
+  baseline_snapshot,
   created_at,
   updated_at
 `;
@@ -620,37 +649,47 @@ const normalizeVerificationProfileUpdate = (
   return normalized;
 };
 
-export const approveVerificationSubmission = async (submissionId: string, approvedBy: string) => {
-  const { error } = await supabase
-    .from('member_verification_submissions')
-    .update({
-      status: 'approved',
-      approved_by: approvedBy,
-      approved_at: new Date().toISOString()
-    })
-    .eq('id', submissionId);
+export const reviewVerificationSubmission = async ({
+  submissionId,
+  decision,
+  note = null,
+  fields = [],
+  fieldDecisions = {},
+  memberPatch = {}
+}: ReviewVerificationSubmissionInput) => {
+  const { error } = await supabase.rpc('review_member_verification_submission', {
+    target_submission_id: submissionId,
+    decision,
+    review_note: normalizeNullableText(note),
+    review_fields: fields,
+    field_decisions: fieldDecisions,
+    member_patch: memberPatch
+  });
 
   if (error) {
     throw error;
   }
 };
+
+export const approveVerificationSubmission = async (submissionId: string) =>
+  reviewVerificationSubmission({ submissionId, decision: 'approved' });
+
+export const requestVerificationChanges = async (
+  submissionId: string,
+  note: string,
+  fields: string[] = []
+) => reviewVerificationSubmission({
+  submissionId,
+  decision: 'needs_changes',
+  note,
+  fields
+});
 
 export const exemptVerificationSubmission = async (
   submissionId: string,
-  exemptedBy: string,
   exemptionReason: string
-) => {
-  const { error } = await supabase
-    .from('member_verification_submissions')
-    .update({
-      status: 'exempted',
-      exempted_by: exemptedBy,
-      exempted_at: new Date().toISOString(),
-      exemption_reason: exemptionReason
-    })
-    .eq('id', submissionId);
-
-  if (error) {
-    throw error;
-  }
-};
+) => reviewVerificationSubmission({
+  submissionId,
+  decision: 'exempted',
+  note: exemptionReason
+});

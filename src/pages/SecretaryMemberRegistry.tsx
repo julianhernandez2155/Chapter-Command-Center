@@ -33,16 +33,19 @@ import {
   createSecretaryChaseBatch,
   fetchSecretaryMemberProfiles,
   markSecretaryProfileChased,
-  markSecretaryProfileVerified
+  markSecretaryProfileVerified,
+  updateSecretaryMemberProfile,
+  upsertGuardianContact
 } from '../lib/memberSecretaryRegistry';
 import {
   VerificationCycle,
+  VerificationReviewDecision,
   VerificationSubmission,
-  approveVerificationSubmission,
   closeVerificationCycle,
   fetchActiveVerificationCycle,
   fetchVerificationSubmissions,
-  launchVerificationCycle
+  launchVerificationCycle,
+  reviewVerificationSubmission
 } from '../lib/memberVerification';
 
 type ColumnGroup = 'Identity' | 'Contact' | 'Academic' | 'Housing' | 'Social' | 'Hygiene' | 'Family';
@@ -53,6 +56,42 @@ type ExportPresetId = 'contact_sheet' | 'parent_consent' | 'missing_info' | 'stu
 type VerificationFilter = 'all' | 'verified' | 'unverified' | 'stale_30';
 type MissingFilter = 'all' | 'missing' | 'complete';
 type RosterFilter = 'all' | 'active' | 'missing' | 'status_watchlist';
+type ReviewFieldInputType = 'text' | 'email' | 'tel' | 'number' | 'checkbox';
+type ReviewEditableMemberField = keyof Pick<SecretaryMemberProfile,
+  | 'preferred_name'
+  | 'personal_email'
+  | 'phone'
+  | 'graduation_year'
+  | 'expected_graduation_term'
+  | 'school'
+  | 'major'
+  | 'housing_type'
+  | 'local_address'
+  | 'campus_housing'
+  | 'home_city'
+  | 'home_state'
+  | 'instagram'
+  | 'snapchat'
+  | 'linkedin'
+  | 'tshirt_size'
+  | 'hoodie_size'
+  | 'parent_outreach_consent'
+>;
+type ReviewEditableTarget =
+  | { table: 'members'; field: ReviewEditableMemberField }
+  | { table: 'guardian'; order: 1 | 2; field: 'contact_name' | 'relationship' | 'phone' | 'email' };
+
+interface VerificationReviewField {
+  key: string;
+  label: string;
+  group: string;
+  submittedValue: string | boolean | number | null;
+  currentValue: string | boolean | number | null;
+  changed: boolean;
+  flagged: boolean;
+  inputType: ReviewFieldInputType;
+  editable?: ReviewEditableTarget;
+}
 
 type ColumnKey =
   | 'name'
@@ -604,17 +643,60 @@ export const SecretaryMemberRegistry = () => {
     }
   };
 
-  const approveSubmittedVerification = async (submissionId: string) => {
+  const reviewSubmittedVerification = async ({
+    submissionId,
+    decision,
+    note,
+    fields
+  }: {
+    submissionId: string;
+    decision: VerificationReviewDecision;
+    note?: string | null;
+    fields?: string[];
+  }) => {
     if (!currentMember) return;
 
     setSavingId(submissionId);
     try {
-      await approveVerificationSubmission(submissionId, currentMember.id);
+      await reviewVerificationSubmission({ submissionId, decision, note, fields });
       await loadVerificationCycle();
       await loadMembers();
     } catch (err) {
-      console.error('Unable to approve verification submission:', err);
-      setError(err instanceof Error ? err.message : 'Unable to approve verification submission.');
+      console.error('Unable to review verification submission:', err);
+      setError(err instanceof Error ? err.message : 'Unable to review verification submission.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const saveVerificationReviewField = async (
+    member: SecretaryMemberProfile,
+    field: VerificationReviewField,
+    rawValue: string | boolean
+  ) => {
+    if (!field.editable) return;
+
+    setSavingId(`${member.id}-${field.key}`);
+    try {
+      if (field.editable.table === 'members') {
+        await updateSecretaryMemberProfile(member.id, {
+          [field.editable.field]: rawValue
+        });
+      } else {
+        await upsertGuardianContact({
+          member_id: member.id,
+          contact_order: field.editable.order,
+          contact_name: getGuardianContactName(member, field.editable.order, field.editable.field, rawValue),
+          relationship: getGuardianFieldValue(member, field.editable.order, 'relationship', field.editable.field, rawValue),
+          phone: getGuardianFieldValue(member, field.editable.order, 'phone', field.editable.field, rawValue),
+          email: getGuardianFieldValue(member, field.editable.order, 'email', field.editable.field, rawValue)
+        });
+      }
+
+      await loadMembers();
+    } catch (err) {
+      console.error('Unable to save review field edit:', err);
+      setError(err instanceof Error ? err.message : 'Unable to save field edit.');
     } finally {
       setSavingId(null);
     }
@@ -912,7 +994,8 @@ export const SecretaryMemberRegistry = () => {
             onWorkflowChange={setActiveWorkflow}
             onLaunchVerification={launchSemesterVerification}
             onCloseVerification={() => void closeSemesterVerification()}
-            onApproveVerification={submissionId => void approveSubmittedVerification(submissionId)}
+            onReviewVerification={input => void reviewSubmittedVerification(input)}
+            onSaveVerificationField={(member, field, value) => void saveVerificationReviewField(member, field, value)}
             onCopyComposerField={(label, value) => void copyComposerField(label, value)}
             onTrackChaseBatch={() => void trackChaseBatch()}
             onSelectView={selectView}
@@ -1394,7 +1477,8 @@ const GuidedWorkflows = ({
   onWorkflowChange,
   onLaunchVerification,
   onCloseVerification,
-  onApproveVerification,
+  onReviewVerification,
+  onSaveVerificationField,
   onCopyComposerField,
   onTrackChaseBatch,
   onSelectView
@@ -1416,7 +1500,17 @@ const GuidedWorkflows = ({
   onWorkflowChange: (workflow: WorkflowKey) => void;
   onLaunchVerification: (termLabel: string, dueDate: string) => void;
   onCloseVerification: () => void;
-  onApproveVerification: (submissionId: string) => void;
+  onReviewVerification: (input: {
+    submissionId: string;
+    decision: VerificationReviewDecision;
+    note?: string | null;
+    fields?: string[];
+  }) => void;
+  onSaveVerificationField: (
+    member: SecretaryMemberProfile,
+    field: VerificationReviewField,
+    value: string | boolean
+  ) => void;
   onCopyComposerField: (label: string, value: string) => void;
   onTrackChaseBatch: () => void;
   onSelectView: (view: RegistrySavedView) => void;
@@ -1460,7 +1554,8 @@ const GuidedWorkflows = ({
           savingId={savingId}
           onLaunch={onLaunchVerification}
           onClose={onCloseVerification}
-          onApprove={onApproveVerification}
+          onReview={onReviewVerification}
+          onSaveField={onSaveVerificationField}
           onOpenMissingView={() => onSelectView(SYSTEM_VIEWS.find(view => view.id === 'missing') ?? INITIAL_VIEW)}
         />
       )}
@@ -1524,7 +1619,8 @@ const VerificationCycleWorkflow = ({
   savingId,
   onLaunch,
   onClose,
-  onApprove,
+  onReview,
+  onSaveField,
   onOpenMissingView
 }: {
   activeMembers: SecretaryMemberProfile[];
@@ -1536,22 +1632,94 @@ const VerificationCycleWorkflow = ({
   savingId: string | null;
   onLaunch: (termLabel: string, dueDate: string) => void;
   onClose: () => void;
-  onApprove: (submissionId: string) => void;
+  onReview: (input: {
+    submissionId: string;
+    decision: VerificationReviewDecision;
+    note?: string | null;
+    fields?: string[];
+  }) => void;
+  onSaveField: (member: SecretaryMemberProfile, field: VerificationReviewField, value: string | boolean) => void;
   onOpenMissingView: () => void;
 }) => {
   const [termLabel, setTermLabel] = useState(getDefaultTermLabel);
   const [dueDate, setDueDate] = useState(getDefaultDueDate);
+  const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [selectedReviewFields, setSelectedReviewFields] = useState<Set<string>>(new Set());
   const submissionByMemberId = useMemo(
     () => new Map(submissions.map(submission => [submission.member_id, submission])),
     [submissions]
   );
-  const reviewRows = activeMembers
+  const reviewRows = useMemo(() => activeMembers
     .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
-    .filter(row => row.submission?.status === 'submitted');
+    .filter((row): row is { member: SecretaryMemberProfile; submission: VerificationSubmission } => row.submission?.status === 'submitted')
+    .sort((a, b) => (a.submission.submitted_at ?? '').localeCompare(b.submission.submitted_at ?? '')), [activeMembers, submissionByMemberId]);
+  const activeReview = reviewRows.find(row => row.submission.id === activeReviewId) ?? reviewRows[0] ?? null;
+  const activeReviewFields = useMemo(
+    () => activeReview ? buildVerificationReviewFields(activeReview.member, activeReview.submission) : [],
+    [activeReview]
+  );
   const openRows = activeMembers
     .map(member => ({ member, submission: submissionByMemberId.get(member.id) }))
     .filter(row => !row.submission || ['not_started', 'in_progress', 'needs_changes'].includes(row.submission.status))
     .slice(0, 8);
+  const activeReviewIndex = activeReview
+    ? reviewRows.findIndex(row => row.submission.id === activeReview.submission.id)
+    : -1;
+
+  useEffect(() => {
+    if (reviewRows.length === 0) {
+      setActiveReviewId(null);
+      return;
+    }
+
+    if (!activeReviewId || !reviewRows.some(row => row.submission.id === activeReviewId)) {
+      setActiveReviewId(reviewRows[0].submission.id);
+    }
+  }, [activeReviewId, reviewRows]);
+
+  useEffect(() => {
+    setReviewNote('');
+    setReviewError(null);
+    setSelectedReviewFields(new Set());
+  }, [activeReview?.submission.id]);
+
+  const toggleReviewField = (fieldKey: string) => {
+    setSelectedReviewFields(current => {
+      const next = new Set(current);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  };
+
+  const skipReview = () => {
+    if (reviewRows.length === 0) return;
+    const nextIndex = activeReviewIndex >= 0 ? (activeReviewIndex + 1) % reviewRows.length : 0;
+    setActiveReviewId(reviewRows[nextIndex].submission.id);
+  };
+
+  const submitReviewDecision = (decision: VerificationReviewDecision) => {
+    if (!activeReview) return;
+    const requiresNote = decision === 'needs_changes' || decision === 'exempted';
+    if (requiresNote && reviewNote.trim().length === 0) {
+      setReviewError(decision === 'needs_changes' ? 'Add a short note for the member.' : 'Add an exemption reason.');
+      return;
+    }
+
+    setReviewError(null);
+    onReview({
+      submissionId: activeReview.submission.id,
+      decision,
+      note: reviewNote,
+      fields: [...selectedReviewFields]
+    });
+    skipReview();
+  };
 
   if (!activeCycle) {
     return (
@@ -1638,57 +1806,337 @@ const VerificationCycleWorkflow = ({
         <MetricPill label="Optional flags" value={String(stats.optionalFlagCount)} />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
         <div className="bg-surface-container-low rounded-xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Submitted For Review</p>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant">Review Queue</p>
+            <span className="bg-surface-container-lowest rounded-full px-3 py-1 text-[10px] font-black text-on-surface-variant">
+              {reviewRows.length}
+            </span>
+          </div>
           {reviewRows.length === 0 ? (
             <p className="text-sm font-bold text-on-surface-variant">No submitted profiles are waiting on Secretary review.</p>
           ) : (
-            <div className="space-y-2">
-              {reviewRows.slice(0, 8).map(({ member, submission }) => (
-                <div key={member.id} className="bg-surface-container-lowest rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+              {reviewRows.map(({ member, submission }) => (
+                <button
+                  key={submission.id}
+                  type="button"
+                  onClick={() => setActiveReviewId(submission.id)}
+                  className={cn(
+                    'w-full rounded-xl px-4 py-3 text-left transition-colors',
+                    activeReview?.submission.id === submission.id
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-black text-sm">{getDisplayName(member)}</p>
-                    <p className="text-[11px] font-bold text-on-surface-variant">
-                      Submitted {formatDateTime(submission?.submitted_at)} · {submission?.changed_fields.length ?? 0} changed
+                    <p className={cn(
+                      'text-[11px] font-bold mt-1',
+                      activeReview?.submission.id === submission.id ? 'text-white/75' : 'text-on-surface-variant'
+                    )}>
+                      Submitted {formatDateTime(submission.submitted_at)} · {submission.changed_fields.length} changed
                     </p>
                   </div>
-                  {submission && (
-                    <button
-                      onClick={() => onApprove(submission.id)}
-                      disabled={savingId === submission.id}
-                      className="rounded-full bg-primary text-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12rem] flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-                    >
-                      {savingId === submission.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                      Approve
-                    </button>
+                  {submission.optional_review_flags.length > 0 && (
+                    <span className={cn(
+                      'rounded-full px-2 py-1 text-[9px] font-black uppercase',
+                      activeReview?.submission.id === submission.id ? 'bg-white/15 text-white' : 'bg-primary/10 text-primary'
+                    )}>
+                      Flag
+                    </span>
                   )}
-                </div>
+                  </div>
+                </button>
               ))}
             </div>
           )}
         </div>
 
-        <div className="bg-surface-container-low rounded-xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Still Gated</p>
-          {openRows.length === 0 ? (
-            <p className="text-sm font-bold text-on-surface-variant">Every active member has submitted or been cleared.</p>
-          ) : (
-            <div className="space-y-2">
-              {openRows.map(({ member, submission }) => (
-                <div key={member.id} className="bg-surface-container-lowest rounded-xl px-4 py-3">
-                  <p className="font-black text-sm">{getDisplayName(member)}</p>
-                  <p className="text-[11px] font-bold text-on-surface-variant">
-                    {formatVerificationSubmissionStatus(submission?.status ?? 'not_started')}
-                    {submission?.last_seen_at ? ` · Last seen ${formatDateTime(submission.last_seen_at)}` : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <VerificationReviewDetail
+          activeReview={activeReview}
+          fields={activeReviewFields}
+          selectedFields={selectedReviewFields}
+          reviewNote={reviewNote}
+          reviewError={reviewError}
+          savingId={savingId}
+          openRows={openRows}
+          onToggleField={toggleReviewField}
+          onReviewNoteChange={setReviewNote}
+          onApprove={() => submitReviewDecision('approved')}
+          onRequestChanges={() => submitReviewDecision('needs_changes')}
+          onExempt={() => submitReviewDecision('exempted')}
+          onSkip={skipReview}
+          onSaveField={onSaveField}
+        />
       </div>
     </section>
+  );
+};
+
+const VerificationReviewDetail = ({
+  activeReview,
+  fields,
+  selectedFields,
+  reviewNote,
+  reviewError,
+  savingId,
+  openRows,
+  onToggleField,
+  onReviewNoteChange,
+  onApprove,
+  onRequestChanges,
+  onExempt,
+  onSkip,
+  onSaveField
+}: {
+  activeReview: { member: SecretaryMemberProfile; submission: VerificationSubmission } | null;
+  fields: VerificationReviewField[];
+  selectedFields: Set<string>;
+  reviewNote: string;
+  reviewError: string | null;
+  savingId: string | null;
+  openRows: Array<{ member: SecretaryMemberProfile; submission: VerificationSubmission | undefined }>;
+  onToggleField: (fieldKey: string) => void;
+  onReviewNoteChange: (value: string) => void;
+  onApprove: () => void;
+  onRequestChanges: () => void;
+  onExempt: () => void;
+  onSkip: () => void;
+  onSaveField: (member: SecretaryMemberProfile, field: VerificationReviewField, value: string | boolean) => void;
+}) => (
+  <div className="space-y-4">
+    <div className="bg-surface-container-low rounded-xl p-4">
+      {!activeReview ? (
+        <div className="min-h-64 flex items-center justify-center text-center text-on-surface-variant">
+          <div>
+            <CheckCircle2 className="mx-auto mb-3 opacity-50" size={34} />
+            <p className="text-sm font-black">No submitted records need review.</p>
+            <p className="text-xs font-bold mt-1">Use Still Gated to see who has not submitted yet.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-primary">Current Review</p>
+              <h4 className="mt-1 text-2xl font-black text-on-surface">{getDisplayName(activeReview.member)}</h4>
+              <p className="mt-1 text-xs font-bold text-on-surface-variant">
+                Submitted {formatDateTime(activeReview.submission.submitted_at)} · {activeReview.submission.changed_fields.length} changed · {activeReview.submission.optional_review_flags.length} optional flags
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onSkip}
+              disabled={savingId === activeReview.submission.id}
+              className="rounded-full bg-surface-container-lowest text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] hover:bg-surface-container-high disabled:opacity-50"
+            >
+              Skip
+            </button>
+          </div>
+
+          {activeReview.submission.correction_notes && (
+            <div className="mt-4 bg-primary/10 rounded-xl px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.16rem] text-primary">Member Note</p>
+              <p className="mt-1 text-sm font-semibold text-on-surface">{activeReview.submission.correction_notes}</p>
+            </div>
+          )}
+
+          {(activeReview.submission.optional_review_flags.length > 0 || activeReview.submission.needs_changes_note) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {activeReview.submission.optional_review_flags.map(flag => (
+                <span key={flag} className="rounded-full bg-primary/10 text-primary px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
+                  {formatLabel(flag)}
+                </span>
+              ))}
+              {activeReview.submission.needs_changes_note && (
+                <span className="rounded-full bg-error/10 text-error px-3 py-1 text-[10px] font-black uppercase tracking-[0.08rem]">
+                  Previous changes requested
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="mt-5 overflow-x-auto rounded-xl border border-outline-variant/40">
+            <div className="min-w-[980px] grid grid-cols-[40px_minmax(170px,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_160px] bg-surface-container-lowest px-3 py-2 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">
+              <span />
+              <span>Field</span>
+              <span>Submitted</span>
+              <span>Current</span>
+              <span>Edit</span>
+            </div>
+            <div className="min-w-[980px] divide-y divide-outline-variant/40">
+              {fields.map(field => (
+                <VerificationReviewFieldRow
+                  key={field.key}
+                  member={activeReview.member}
+                  field={field}
+                  selected={selectedFields.has(field.key)}
+                  saving={savingId === `${activeReview.member.id}-${field.key}`}
+                  onToggle={() => onToggleField(field.key)}
+                  onSave={value => onSaveField(activeReview.member, field, value)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <label className="block mt-5">
+            <span className="text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant">Review note</span>
+            <textarea
+              value={reviewNote}
+              onChange={event => onReviewNoteChange(event.target.value)}
+              rows={3}
+              placeholder="Required for request changes or exempt."
+              className="mt-2 w-full bg-surface-container-lowest rounded-xl px-4 py-3 text-sm text-on-surface font-semibold outline-none focus:ring-1 focus:ring-primary/60 resize-none placeholder:text-on-surface-variant/50"
+            />
+          </label>
+          {reviewError && <p className="mt-2 text-xs font-bold text-error">{reviewError}</p>}
+
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={onApprove}
+              disabled={savingId === activeReview.submission.id}
+              className="rounded-full bg-secondary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Approve
+            </button>
+            <button
+              type="button"
+              onClick={onRequestChanges}
+              disabled={savingId === activeReview.submission.id}
+              className="rounded-full bg-primary text-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {savingId === activeReview.submission.id ? <Loader2 size={14} className="animate-spin" /> : <AlertCircle size={14} />}
+              Request Changes
+            </button>
+            <button
+              type="button"
+              onClick={onExempt}
+              disabled={savingId === activeReview.submission.id}
+              className="rounded-full bg-surface-container-lowest text-on-surface px-4 py-3 text-[10px] font-black uppercase tracking-[0.14rem] disabled:opacity-50 hover:bg-surface-container-high"
+            >
+              Exempt
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+
+    <div className="bg-surface-container-low rounded-xl p-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant mb-3">Still Gated</p>
+      {openRows.length === 0 ? (
+        <p className="text-sm font-bold text-on-surface-variant">Every active member has submitted or been cleared.</p>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {openRows.map(({ member, submission }) => (
+            <div key={member.id} className="bg-surface-container-lowest rounded-xl px-4 py-3">
+              <p className="font-black text-sm">{getDisplayName(member)}</p>
+              <p className="text-[11px] font-bold text-on-surface-variant">
+                {formatVerificationSubmissionStatus(submission?.status ?? 'not_started')}
+                {submission?.last_seen_at ? ` · Last seen ${formatDateTime(submission.last_seen_at)}` : ''}
+              </p>
+              {submission?.needs_changes_note && (
+                <p className="mt-1 text-[11px] font-semibold text-error line-clamp-2">{submission.needs_changes_note}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const VerificationReviewFieldRow = ({
+  member,
+  field,
+  selected,
+  saving,
+  onToggle,
+  onSave
+}: {
+  key?: string;
+  member: SecretaryMemberProfile;
+  field: VerificationReviewField;
+  selected: boolean;
+  saving: boolean;
+  onToggle: () => void;
+  onSave: (value: string | boolean) => void;
+}) => {
+  const [draft, setDraft] = useState<string | boolean>(getReviewInputValue(field.currentValue, field.inputType));
+
+  useEffect(() => {
+    setDraft(getReviewInputValue(field.currentValue, field.inputType));
+  }, [field.currentValue, field.inputType]);
+
+  const valueChanged = String(draft) !== String(getReviewInputValue(field.currentValue, field.inputType));
+
+  return (
+    <div className={cn(
+      'grid grid-cols-[40px_minmax(170px,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_160px] gap-3 px-3 py-3 text-sm items-start',
+      field.changed || field.flagged ? 'bg-primary/5' : 'bg-surface-container-low'
+    )}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="mt-1 text-primary"
+        title="Mark for requested changes"
+      >
+        {selected ? <CheckSquare size={16} /> : <Square size={16} />}
+      </button>
+      <div>
+        <p className="font-black text-on-surface">{field.label}</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant mt-1">{field.group}</p>
+        {(field.changed || field.flagged) && (
+          <p className="text-[10px] font-black uppercase tracking-[0.1rem] text-primary mt-2">
+            {field.flagged ? 'Flagged' : 'Changed'}
+          </p>
+        )}
+      </div>
+      <p className="font-semibold text-on-surface break-words">{formatReviewValue(field.submittedValue)}</p>
+      <p className="font-semibold text-on-surface-variant break-words">{formatReviewValue(field.currentValue)}</p>
+      <div>
+        {field.editable ? (
+          <div className="flex items-center gap-2">
+            {field.inputType === 'checkbox' ? (
+              <button
+                type="button"
+                onClick={() => setDraft(!Boolean(draft))}
+                className={cn(
+                  'h-9 w-9 rounded-full flex items-center justify-center',
+                  Boolean(draft) ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface-variant'
+                )}
+                title="Toggle value"
+              >
+                {Boolean(draft) ? <CheckSquare size={15} /> : <Square size={15} />}
+              </button>
+            ) : (
+              <input
+                type={field.inputType}
+                value={String(draft)}
+                onChange={event => setDraft(event.target.value)}
+                className="min-w-0 flex-1 bg-surface-container-lowest rounded-lg px-3 py-2 text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => onSave(draft)}
+              disabled={saving || !valueChanged}
+              className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40"
+              title="Save field"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            </button>
+          </div>
+        ) : (
+          <span className="text-[11px] font-bold text-on-surface-variant">Read only</span>
+        )}
+        <span className="sr-only">{member.id}</span>
+      </div>
+    </div>
   );
 };
 
@@ -2292,6 +2740,227 @@ function getActiveFilterCount(filters: RegistryFilters) {
     if (key === 'roster') return value !== 'all';
     return value !== 'all';
   }).length;
+}
+
+const VERIFICATION_REVIEW_MEMBER_FIELDS: VerificationReviewField[] = [
+  reviewMemberField('preferred_name', 'Preferred name', 'Identity', 'text'),
+  reviewMemberField('personal_email', 'Personal email', 'Contact', 'email'),
+  reviewMemberField('phone', 'Phone', 'Contact', 'tel'),
+  reviewMemberField('graduation_year', 'Graduation year', 'Academic', 'number'),
+  reviewMemberField('expected_graduation_term', 'Expected grad term', 'Academic', 'text'),
+  reviewMemberField('school', 'School', 'Academic', 'text'),
+  reviewMemberField('major', 'Major', 'Academic', 'text'),
+  reviewMemberField('housing_type', 'Housing type', 'Housing', 'text'),
+  reviewMemberField('local_address', 'Local address', 'Housing', 'text'),
+  reviewMemberField('campus_housing', 'Dorm / room', 'Housing', 'text'),
+  reviewMemberField('home_city', 'Home city', 'Housing', 'text'),
+  reviewMemberField('home_state', 'Home state', 'Housing', 'text'),
+  reviewMemberField('instagram', 'Instagram', 'Social', 'text'),
+  reviewMemberField('snapchat', 'Snapchat', 'Social', 'text'),
+  reviewMemberField('linkedin', 'LinkedIn', 'Social', 'text'),
+  reviewMemberField('tshirt_size', 'T-shirt size', 'Sizes', 'text'),
+  reviewMemberField('hoodie_size', 'Hoodie size', 'Sizes', 'text'),
+  reviewMemberField('parent_outreach_consent', 'Parent outreach consent', 'Family', 'checkbox')
+];
+
+const VERIFICATION_REVIEW_GUARDIAN_FIELDS: VerificationReviewField[] = [
+  reviewGuardianField('guardian_1_name', 'Guardian 1 name', 'Family', 1, 'contact_name', 'text'),
+  reviewGuardianField('guardian_1_relationship', 'Guardian 1 relationship', 'Family', 1, 'relationship', 'text'),
+  reviewGuardianField('guardian_1_phone', 'Guardian 1 phone', 'Family', 1, 'phone', 'tel'),
+  reviewGuardianField('guardian_1_email', 'Guardian 1 email', 'Family', 1, 'email', 'email'),
+  reviewGuardianField('guardian_2_name', 'Guardian 2 name', 'Family', 2, 'contact_name', 'text'),
+  reviewGuardianField('guardian_2_relationship', 'Guardian 2 relationship', 'Family', 2, 'relationship', 'text'),
+  reviewGuardianField('guardian_2_phone', 'Guardian 2 phone', 'Family', 2, 'phone', 'tel'),
+  reviewGuardianField('guardian_2_email', 'Guardian 2 email', 'Family', 2, 'email', 'email')
+];
+
+function reviewMemberField(
+  key: ReviewEditableMemberField,
+  label: string,
+  group: string,
+  inputType: ReviewFieldInputType
+): VerificationReviewField {
+  return {
+    key: String(key),
+    label,
+    group,
+    submittedValue: null,
+    currentValue: null,
+    changed: false,
+    flagged: false,
+    inputType,
+    editable: { table: 'members', field: key }
+  };
+}
+
+function reviewGuardianField(
+  key: string,
+  label: string,
+  group: string,
+  order: 1 | 2,
+  field: 'contact_name' | 'relationship' | 'phone' | 'email',
+  inputType: ReviewFieldInputType
+): VerificationReviewField {
+  return {
+    key,
+    label,
+    group,
+    submittedValue: null,
+    currentValue: null,
+    changed: false,
+    flagged: false,
+    inputType,
+    editable: { table: 'guardian', order, field }
+  };
+}
+
+function buildVerificationReviewFields(
+  member: SecretaryMemberProfile,
+  submission: VerificationSubmission
+): VerificationReviewField[] {
+  const changedFields = new Set(submission.changed_fields);
+  const flaggedFields = new Set([
+    ...submission.optional_review_flags,
+    ...submission.needs_changes_fields,
+    ...submission.missing_required_fields
+  ]);
+
+  const memberFields = VERIFICATION_REVIEW_MEMBER_FIELDS.map(field => {
+    const submittedValue = getSnapshotValue(submission.snapshot, field.key);
+    const currentValue = getMemberReviewValue(member, field.key);
+    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields);
+  });
+
+  const guardianFields = VERIFICATION_REVIEW_GUARDIAN_FIELDS.map(field => {
+    const submittedValue = getSnapshotGuardianValue(submission.snapshot, field.key);
+    const currentValue = getMemberReviewValue(member, field.key);
+    return hydrateReviewField(field, submittedValue, currentValue, changedFields, flaggedFields);
+  });
+
+  return [...memberFields, ...guardianFields].filter(field =>
+    field.changed ||
+    field.flagged ||
+    hasReviewValue(field.submittedValue) ||
+    hasReviewValue(field.currentValue)
+  );
+}
+
+function hydrateReviewField(
+  field: VerificationReviewField,
+  submittedValue: string | boolean | number | null,
+  currentValue: string | boolean | number | null,
+  changedFields: Set<string>,
+  flaggedFields: Set<string>
+): VerificationReviewField {
+  return {
+    ...field,
+    submittedValue,
+    currentValue,
+    changed: changedFields.has(field.key) || normalizeReviewComparable(submittedValue) !== normalizeReviewComparable(currentValue),
+    flagged: flaggedFields.has(field.key)
+  };
+}
+
+function getSnapshotValue(snapshot: Record<string, unknown>, key: string) {
+  const value = snapshot[key];
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  return null;
+}
+
+function getSnapshotGuardianValue(snapshot: Record<string, unknown>, key: string) {
+  const order = key.startsWith('guardian_2') ? 2 : 1;
+  const contacts = Array.isArray(snapshot.parent_guardian_contacts)
+    ? snapshot.parent_guardian_contacts as Array<Record<string, unknown>>
+    : [];
+  const contact = contacts.find(item => item.contactOrder === order || item.contact_order === order);
+
+  if (!contact) return null;
+  if (key.endsWith('_name')) {
+    return [contact.firstName, contact.lastName, contact.contact_name]
+      .filter(value => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, contact.contact_name ? 1 : 2)
+      .join(' ') || null;
+  }
+
+  const contactKey = key.endsWith('_relationship')
+    ? 'relationship'
+    : key.endsWith('_phone')
+      ? 'phone'
+      : 'email';
+  const value = contact[contactKey];
+  return typeof value === 'string' ? value : null;
+}
+
+function getMemberReviewValue(member: SecretaryMemberProfile, key: string): string | boolean | number | null {
+  switch (key) {
+    case 'guardian_1_name':
+      return member.guardian_1_name;
+    case 'guardian_1_relationship':
+      return member.guardian_1_relationship;
+    case 'guardian_1_phone':
+      return member.guardian_1_phone;
+    case 'guardian_1_email':
+      return member.guardian_1_email;
+    case 'guardian_2_name':
+      return member.guardian_2_name;
+    case 'guardian_2_relationship':
+      return member.guardian_2_relationship;
+    case 'guardian_2_phone':
+      return member.guardian_2_phone;
+    case 'guardian_2_email':
+      return member.guardian_2_email;
+    default: {
+      const value = member[key as keyof SecretaryMemberProfile];
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+      return null;
+    }
+  }
+}
+
+function hasReviewValue(value: string | boolean | number | null) {
+  if (typeof value === 'boolean' || typeof value === 'number') return true;
+  return Boolean(value && value.trim().length > 0);
+}
+
+function normalizeReviewComparable(value: string | boolean | number | null) {
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function formatReviewValue(value: string | boolean | number | null) {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return String(value);
+  return value && value.trim().length > 0 ? value : 'Missing';
+}
+
+function getReviewInputValue(value: string | boolean | number | null, inputType: ReviewFieldInputType) {
+  if (inputType === 'checkbox') return Boolean(value);
+  return value === null ? '' : String(value);
+}
+
+function getGuardianContactName(
+  member: SecretaryMemberProfile,
+  order: 1 | 2,
+  editedField: 'contact_name' | 'relationship' | 'phone' | 'email',
+  rawValue: string | boolean
+) {
+  if (editedField === 'contact_name') return String(rawValue);
+  return order === 1
+    ? member.guardian_1_name ?? 'Parent/Guardian 1'
+    : member.guardian_2_name ?? 'Parent/Guardian 2';
+}
+
+function getGuardianFieldValue(
+  member: SecretaryMemberProfile,
+  order: 1 | 2,
+  targetField: 'relationship' | 'phone' | 'email',
+  editedField: 'contact_name' | 'relationship' | 'phone' | 'email',
+  rawValue: string | boolean
+) {
+  if (editedField === targetField) return String(rawValue);
+  const prefix = order === 1 ? 'guardian_1' : 'guardian_2';
+  return member[`${prefix}_${targetField}` as keyof SecretaryMemberProfile] as string | null;
 }
 
 function getDisplayName(member: SecretaryMemberProfile) {
