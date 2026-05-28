@@ -24,6 +24,8 @@ export type Permission =
   | 'events.archive'
   | 'roster.view'
   | 'roster.manage'
+  | 'admin.members.view'
+  | 'admin.members.manage'
   | 'attendance.import'
   | 'forms.status.view'
   | 'forms.intake'
@@ -84,6 +86,8 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   president: [
     'roster.view',
     'roster.manage',
+    'admin.members.view',
+    'admin.members.manage',
     'positions.manage',
     'events.create',
     'events.edit',
@@ -96,6 +100,8 @@ export const POSITION_PERMISSION_REGISTRY: Record<string, Permission[]> = {
   secretary: [
     'roster.view',
     'roster.manage',
+    'admin.members.view',
+    'admin.members.manage',
     'positions.manage',
     'events.create',
     'events.edit',

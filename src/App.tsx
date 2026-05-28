@@ -6,6 +6,7 @@ import { SignIn } from './pages/SignIn';
 import { Onboarding } from './pages/Onboarding';
 import { Positions } from './pages/Positions';
 import { MemberDirectory } from './pages/MemberDirectory';
+import { SecretaryMemberRegistry } from './pages/SecretaryMemberRegistry';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
@@ -188,6 +189,11 @@ const AppContent = () => {
                     <MemberDirectory />
                   </ProtectedRoute>
                 } />
+                <Route path="/admin/members" element={
+                  <ProtectedRoute permission="admin.members.view">
+                    <SecretaryMemberRegistry />
+                  </ProtectedRoute>
+                } />
                 <Route path="/archive" element={
                   <ProtectedRoute>
                     <div className="text-center py-20 opacity-20 uppercase font-black tracking-[1rem]">Archive Protocol Pending</div>
@@ -208,7 +214,7 @@ const AppContent = () => {
 };
 
 const shouldShowTopBarSearch = (pathname: string) => {
-  const routesWithLocalSearch = ['/events', '/roster'];
+  const routesWithLocalSearch = ['/events', '/roster', '/admin/members'];
   return !routesWithLocalSearch.some(route => pathname === route || pathname.startsWith(`${route}/`));
 };
 

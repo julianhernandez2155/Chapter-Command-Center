@@ -15,7 +15,8 @@ import {
   Clock,
   Layers,
   BarChart3,
-  PenTool
+  PenTool,
+  TableProperties
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,6 +65,7 @@ export const SideNavBar = () => {
         )}
 
         {canManageRecords && <NavItem to="/forms/secretary" icon={<Layers size={20} />} label="Secretary Hub" />}
+        {can('admin.members.view') && <NavItem to="/admin/members" icon={<TableProperties size={20} />} label="Member Registry" />}
         {can('reports.view_all') && <NavItem to="/admin/reports" icon={<Layers size={20} />} label="Reports View" />}
         {can('forms.builder.manage') && <NavItem to="/forms/builder" icon={<PenTool size={20} />} label="Form Builder" />}
         {can('forms.responses.view') && <NavItem to="/forms/responses" icon={<BarChart3 size={20} />} label="Responses" />}
