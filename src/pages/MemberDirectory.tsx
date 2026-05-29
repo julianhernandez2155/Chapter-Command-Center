@@ -767,11 +767,27 @@ const ProfileDrawer = ({
     >
       {member && (
         <>
-          <div className="relative h-[360px] w-full flex-shrink-0 bg-surface-container-high overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center opacity-40">
-              <Avatar member={member} size="hero" />
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/40 to-black/10" />
+          <div className="relative min-h-[430px] w-full flex-shrink-0 overflow-hidden bg-surface-container-high">
+            {member.avatar_url ? (
+              <>
+                <img
+                  src={member.avatar_url}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.18),rgba(14,14,14,0.50)_46%,rgba(14,14,14,0.98)_100%)]" />
+              </>
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(42,42,42,0.88),rgba(28,27,27,0.64)_42%,rgba(14,14,14,0.98)_100%)]" />
+                <div className="absolute inset-x-8 top-24 flex items-center justify-center">
+                  <span className="text-[6rem] font-black leading-none tracking-normal text-secondary/35">
+                    {getInitials(member)}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="absolute top-7 left-7 right-20 z-10 flex flex-wrap items-center gap-2">
               {currentPositions[0] && <Badge tone="gold">{currentPositions[0].display_name}</Badge>}
               {member.current_status_type === 'study_abroad' && <Badge tone="gold">Study Abroad</Badge>}
@@ -856,19 +872,20 @@ const ProfileDrawer = ({
   );
 };
 
-const Avatar = ({ member, size }: { member: DirectoryMember; size: 'sm' | 'lg' | 'hero' }) => {
+const Avatar = ({ member, size }: { member: DirectoryMember; size: 'sm' | 'lg' | 'hero' | 'drawer' }) => {
   const sizeClass = {
     sm: 'w-12 h-12 text-sm',
     lg: 'w-40 h-40 text-4xl',
-    hero: 'w-44 h-44 text-5xl'
+    hero: 'w-44 h-44 text-5xl',
+    drawer: 'w-36 h-36 text-4xl'
   }[size];
 
   if (member.avatar_url) {
-    return <img alt={getDisplayName(member)} className={cn(sizeClass, "rounded-full object-cover shadow-2xl")} src={member.avatar_url} />;
+    return <img alt={getDisplayName(member)} className={cn(sizeClass, "rounded-full object-cover shadow-2xl ring-2 ring-surface-container-lowest/70")} src={member.avatar_url} />;
   }
 
   return (
-    <div className={cn(sizeClass, "rounded-full bg-surface-container-high flex items-center justify-center shadow-2xl text-secondary font-black")}>
+    <div className={cn(sizeClass, "rounded-full bg-surface-container-high flex items-center justify-center shadow-2xl text-secondary font-black ring-2 ring-surface-container-lowest/70")}>
       {getInitials(member)}
     </div>
   );
@@ -876,8 +893,8 @@ const Avatar = ({ member, size }: { member: DirectoryMember; size: 'sm' | 'lg' |
 
 const Badge = ({ tone, children }: { tone: 'gold' | 'muted'; children: React.ReactNode }) => (
   <span className={cn(
-    "text-[10px] font-black uppercase tracking-[0.22rem] px-4 py-2 rounded-full",
-    tone === 'gold' ? "text-secondary bg-secondary/10" : "text-on-surface-variant bg-surface-container-high"
+    "text-[10px] font-black uppercase tracking-[0.22rem] px-4 py-2 rounded-full shadow-[0_12px_28px_rgba(0,0,0,0.35)]",
+    tone === 'gold' ? "text-secondary bg-secondary/25" : "text-on-surface bg-surface-container-high/90"
   )}>
     {children}
   </span>

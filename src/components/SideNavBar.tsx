@@ -10,6 +10,7 @@ import {
   Settings, 
   HelpCircle, 
   LogOut,
+  UserRound,
   History,
   CheckSquare,
   FileEdit,
@@ -23,7 +24,7 @@ import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
 export const SideNavBar = () => {
-  const { can, canAny, member, roles, signOut } = useAuth();
+  const { can, canAny, member, roles, signOut, verificationStatus } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
 
   const canManageRecords = canAny(['attendance.import', 'forms.builder.manage', 'positions.manage']);
@@ -36,6 +37,7 @@ export const SideNavBar = () => {
   const roleName = roles && roles.length > 0
     ? roles[0].charAt(0).toUpperCase() + roles[0].slice(1)
     : 'Member';
+  const needsVerification = Boolean(verificationStatus?.is_gate_required && !verificationStatus.is_complete);
   const initials = member
     ? `${(member.preferred_name || member.legal_first_name).charAt(0)}${member.legal_last_name.charAt(0)}`.toUpperCase()
     : 'CC';
@@ -117,13 +119,23 @@ export const SideNavBar = () => {
                   <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14rem] text-on-surface-variant">{roleName}</p>
                 </div>
                 <NavLink
-                  to="/settings"
+                  to="/profile"
                   onClick={() => setProfileOpen(false)}
                   className="flex items-center gap-3 rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-[0.12rem] text-on-surface hover:bg-surface-container-high"
                 >
-                  <Settings size={15} />
-                  Settings
+                  <UserRound size={15} />
+                  My Profile
                 </NavLink>
+                {needsVerification && (
+                  <NavLink
+                    to="/verify"
+                    onClick={() => setProfileOpen(false)}
+                    className="mt-1 flex items-center gap-3 rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-[0.12rem] text-on-surface hover:bg-surface-container-high"
+                  >
+                    <Settings size={15} />
+                    Verify Profile
+                  </NavLink>
+                )}
                 <button
                   onClick={async () => {
                     setProfileOpen(false);

@@ -12,6 +12,7 @@ import { SecretaryVerificationReview } from './pages/SecretaryVerificationReview
 import { SecretaryGraduationReview } from './pages/SecretaryGraduationReview';
 import { MemberVerification } from './pages/MemberVerification';
 import { MemberGraduationConfirmation } from './pages/MemberGraduationConfirmation';
+import { MemberProfile } from './pages/MemberProfile';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
@@ -181,6 +182,11 @@ const AppContent = () => {
                     <EventDetails />
                   </ProtectedRoute>
                 } />
+                <Route path="/profile" element={
+                  <ProtectedRoute>
+                    <MemberProfile />
+                  </ProtectedRoute>
+                } />
 
                 {/* Attendance import (Data Protocol): Restricted to President/Secretary */}
                 <Route path="/attendance" element={
@@ -298,7 +304,7 @@ const AppContent = () => {
 };
 
 const shouldShowTopBarSearch = (pathname: string) => {
-  const routesWithLocalSearch = ['/events', '/roster', '/admin/members'];
+  const routesWithLocalSearch = ['/events', '/roster', '/admin/members', '/profile'];
   return !routesWithLocalSearch.some(route => pathname === route || pathname.startsWith(`${route}/`));
 };
 
