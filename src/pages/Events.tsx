@@ -4,9 +4,11 @@ import {
   AlertCircle,
   Calendar as CalendarIcon,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock,
-  Filter,
+  Download,
+  ExternalLink,
   Loader2,
   MapPin,
   Plus,
@@ -17,18 +19,25 @@ import { useNavigate } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  applyEventTypeDefaults,
+  ATTENDANCE_MODE_OPTIONS,
+  buildEventsIcs,
   createEvent,
   defaultEventFormValues,
   EventFormValues,
+  EVENT_TYPE_OPTIONS,
   EventWithAttendance,
+  formatAttendanceMode,
   formatEventCategory,
   formatEventTimeRange,
   formatEventType,
+  getGoogleCalendarUrl,
   getEventTiming
 } from '../lib/events';
 import { fetchEvents } from '../lib/events';
 
 type EventTab = 'upcoming' | 'past' | 'archived';
+type EventViewMode = 'list' | 'calendar';
 
 export const Events = () => {
   const { member, can } = useAuth();
@@ -38,6 +47,8 @@ export const Events = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<EventTab>('upcoming');
+  const [viewMode, setViewMode] = useState<EventViewMode>('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
 
@@ -61,19 +72,42 @@ export const Events = () => {
     void loadEvents();
   }, []);
 
-  const visibleEvents = useMemo(() => {
+  const filteredEvents = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
     return events.filter(event => {
-      const matchesTab = getEventTiming(event) === activeTab;
       const matchesSearch = normalizedSearch.length === 0
         || event.name.toLowerCase().includes(normalizedSearch)
         || event.location.toLowerCase().includes(normalizedSearch)
         || formatEventType(event.type).toLowerCase().includes(normalizedSearch);
 
-      return matchesTab && matchesSearch;
+      return matchesSearch;
     });
-  }, [activeTab, events, search]);
+  }, [events, search]);
+
+  const visibleEvents = useMemo(() => (
+    filteredEvents.filter(event => getEventTiming(event) === activeTab)
+  ), [activeTab, filteredEvents]);
+
+  const calendarEvents = useMemo(() => (
+    filteredEvents.filter(event => !event.archived_at)
+  ), [filteredEvents]);
+
+  const calendarMonthEvents = useMemo(() => (
+    calendarEvents.filter(event => isSameMonth(new Date(`${event.event_date}T00:00:00`), calendarMonth))
+  ), [calendarEvents, calendarMonth]);
+
+  const handleExportMonth = () => {
+    if (calendarMonthEvents.length === 0) return;
+
+    const monthLabel = formatMonthLabel(calendarMonth);
+    const ics = buildEventsIcs(calendarMonthEvents, `Chapter Command Center ${monthLabel}`);
+    downloadTextFile(
+      `chapter-command-center-${toMonthFileSlug(calendarMonth)}.ics`,
+      ics,
+      'text/calendar;charset=utf-8'
+    );
+  };
 
   const handleCreate = async (values: EventFormValues) => {
     if (!member) return;
@@ -99,7 +133,7 @@ export const Events = () => {
       <section className="flex flex-col md:flex-row justify-between items-end gap-6">
         <div className="max-w-2xl">
           <h1 className="text-5xl md:text-6xl font-bold tracking-tighter text-on-surface mb-2">Chapter Events</h1>
-          <p className="text-on-surface-variant font-medium text-lg max-w-lg">Live Supabase event operations before attendance capture comes online.</p>
+          <p className="text-on-surface-variant font-medium text-lg max-w-lg">Live chapter schedule, event operations, and calendar export in one place.</p>
         </div>
         {canCreateEvents && (
           <button
@@ -112,7 +146,8 @@ export const Events = () => {
         )}
       </section>
 
-      <div className="flex flex-col md:flex-row gap-6 items-center justify-between bg-surface-container-low/30 p-4 rounded-2xl border border-white/5">
+      <div className="flex flex-col gap-4 bg-surface-container-low/30 p-4 rounded-2xl border border-white/5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="relative flex-1 md:w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
@@ -123,12 +158,35 @@ export const Events = () => {
               onChange={event => setSearch(event.target.value)}
             />
           </div>
-          <button className="p-3 bg-surface-container-lowest rounded-full text-on-surface-variant hover:text-on-surface border border-white/5">
-            <Filter size={18} />
+          <button
+            onClick={handleExportMonth}
+            disabled={viewMode !== 'calendar' || calendarMonthEvents.length === 0}
+            className="flex min-h-11 items-center gap-2 rounded-full bg-surface-container-lowest px-4 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant transition-colors hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download size={15} />
+            Export Month
           </button>
         </div>
-        <div className="flex bg-surface-container-lowest p-1 rounded-full border border-white/5">
-          {EVENT_TABS.map(tab => (
+
+          <div className="flex bg-surface-container-lowest p-1 rounded-full border border-white/5">
+            {VIEW_MODES.map(mode => (
+              <button
+                key={mode.value}
+                onClick={() => setViewMode(mode.value)}
+                className={cn(
+                  "px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
+                  viewMode === mode.value ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant/50 hover:text-on-surface"
+                )}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {viewMode === 'list' && (
+          <div className="flex bg-surface-container-lowest p-1 rounded-full border border-white/5 md:w-fit">
+            {EVENT_TABS.map(tab => (
             <button
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
@@ -139,8 +197,9 @@ export const Events = () => {
             >
               {tab.label}
             </button>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -155,6 +214,17 @@ export const Events = () => {
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
           <span className="text-xs font-bold uppercase tracking-[0.2rem]">Loading live events</span>
         </section>
+      ) : viewMode === 'calendar' ? (
+        <MonthCalendar
+          month={calendarMonth}
+          events={calendarEvents}
+          monthEvents={calendarMonthEvents}
+          onPreviousMonth={() => setCalendarMonth(current => addMonths(current, -1))}
+          onNextMonth={() => setCalendarMonth(current => addMonths(current, 1))}
+          onToday={() => setCalendarMonth(startOfMonth(new Date()))}
+          onOpenEvent={event => navigate(`/events/${event.id}`)}
+          onExportMonth={handleExportMonth}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {visibleEvents.length === 0 && (
@@ -192,6 +262,11 @@ const EVENT_TABS: { value: EventTab; label: string }[] = [
   { value: 'archived', label: 'Archived' }
 ];
 
+const VIEW_MODES: { value: EventViewMode; label: string }[] = [
+  { value: 'list', label: 'List' },
+  { value: 'calendar', label: 'Calendar' }
+];
+
 const EventRow = ({ event, onClick }: { event: EventWithAttendance; onClick: () => void }) => {
   const date = new Date(`${event.event_date}T00:00:00`);
   const attendancePct = event.attendance.expected > 0
@@ -199,15 +274,14 @@ const EventRow = ({ event, onClick }: { event: EventWithAttendance; onClick: () 
     : 0;
 
   return (
-    <motion.button
-      onClick={onClick}
+    <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="group bg-surface-container-low p-6 rounded-2xl border border-white/5 hover:bg-surface-container-high transition-all flex flex-col md:flex-row md:items-center justify-between gap-6 text-left"
     >
-      <div className="flex items-center gap-6">
+      <button onClick={onClick} className="flex min-w-0 flex-1 items-center gap-6 text-left">
         <div className={cn(
-          "w-16 h-16 rounded-2xl flex flex-col items-center justify-center border",
+          "h-16 w-16 shrink-0 rounded-2xl flex flex-col items-center justify-center border",
           event.category === 'mandatory' ? "bg-primary/10 border-primary/20 text-primary" : "bg-secondary/10 border-secondary/20 text-secondary"
         )}>
           <span className="text-[10px] font-black uppercase leading-none mb-1">
@@ -215,7 +289,7 @@ const EventRow = ({ event, onClick }: { event: EventWithAttendance; onClick: () 
           </span>
           <span className="text-2xl font-black leading-none">{date.getDate()}</span>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
             <h3 className="text-xl font-bold tracking-tight">{event.name}</h3>
             {event.category === 'mandatory' && (
@@ -231,7 +305,7 @@ const EventRow = ({ event, onClick }: { event: EventWithAttendance; onClick: () 
             <span className="flex items-center gap-1.5"><CalendarIcon size={14} /> {formatEventType(event.type)}</span>
           </div>
         </div>
-      </div>
+      </button>
 
       <div className="flex items-center gap-8">
         <div className="flex flex-col items-end">
@@ -243,11 +317,158 @@ const EventRow = ({ event, onClick }: { event: EventWithAttendance; onClick: () 
             <span className="text-sm font-bold">{event.attendance.present}/{event.attendance.expected}</span>
           </div>
         </div>
+        <a
+          href={getGoogleCalendarUrl(event)}
+          target="_blank"
+          rel="noreferrer"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface-variant transition-colors hover:text-secondary"
+          aria-label={`Add ${event.name} to Google Calendar`}
+          title="Add to Google Calendar"
+        >
+          <ExternalLink size={16} />
+        </a>
         <ChevronRight className="text-on-surface-variant/20 group-hover:text-primary transition-colors" />
       </div>
-    </motion.button>
+    </motion.div>
   );
 };
+
+const MonthCalendar = ({
+  month,
+  events,
+  monthEvents,
+  onPreviousMonth,
+  onNextMonth,
+  onToday,
+  onOpenEvent,
+  onExportMonth
+}: {
+  month: Date;
+  events: EventWithAttendance[];
+  monthEvents: EventWithAttendance[];
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onToday: () => void;
+  onOpenEvent: (event: EventWithAttendance) => void;
+  onExportMonth: () => void;
+}) => {
+  const days = useMemo(() => getCalendarDays(month), [month]);
+  const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
+  const monthLabel = formatMonthLabel(month);
+
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-[2rem] bg-surface-container-low p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22rem] text-secondary">Calendar View</p>
+          <h2 className="mt-1 text-3xl font-black tracking-tight text-on-surface">{monthLabel}</h2>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={onToday}
+            className="min-h-11 rounded-full bg-surface-container-lowest px-5 text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant transition-colors hover:text-on-surface"
+          >
+            Today
+          </button>
+          <div className="flex rounded-full bg-surface-container-lowest p-1">
+            <button onClick={onPreviousMonth} className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface" aria-label="Previous month">
+              <ChevronLeft size={18} />
+            </button>
+            <button onClick={onNextMonth} className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface" aria-label="Next month">
+              <ChevronRight size={18} />
+            </button>
+          </div>
+          <button
+            onClick={onExportMonth}
+            disabled={monthEvents.length === 0}
+            className="flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-[10px] font-black uppercase tracking-[0.16rem] text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download size={15} />
+            Export .ics
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-[2rem] bg-surface-container-low no-scrollbar">
+        <div className="min-w-[760px]">
+          <div className="grid grid-cols-7 bg-surface-container-lowest">
+            {WEEKDAY_LABELS.map(day => (
+              <div key={day} className="px-3 py-4 text-center text-[10px] font-black uppercase tracking-[0.16rem] text-on-surface-variant">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {days.map(day => {
+              const key = toDateKey(day);
+              const dayEvents = eventsByDay.get(key) ?? [];
+              const isMuted = !isSameMonth(day, month);
+              const isToday = toDateKey(day) === toDateKey(new Date());
+
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    'min-h-36 p-3 transition-colors md:min-h-40',
+                    isMuted ? 'bg-surface-container-lowest/35 text-on-surface-variant/40' : 'bg-surface-container-low text-on-surface',
+                    isToday && 'bg-surface-container-high/60'
+                  )}
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-full text-xs font-black',
+                      isToday ? 'bg-primary text-white' : 'text-on-surface-variant'
+                    )}>
+                      {day.getDate()}
+                    </span>
+                    {dayEvents.length > 0 && (
+                      <span className="text-[9px] font-black uppercase tracking-[0.12rem] text-secondary">
+                        {dayEvents.length}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {dayEvents.slice(0, 4).map(event => (
+                      <React.Fragment key={event.id}>
+                        <CalendarEventChip event={event} onOpen={() => onOpenEvent(event)} />
+                      </React.Fragment>
+                    ))}
+                    {dayEvents.length > 4 && (
+                      <p className="px-2 text-[10px] font-bold text-on-surface-variant">
+                        +{dayEvents.length - 4} more
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const CalendarEventChip = ({ event, onOpen }: { event: EventWithAttendance; onOpen: () => void }) => (
+  <button
+    onClick={onOpen}
+    className={cn(
+      'w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-surface-container-high',
+      event.category === 'mandatory' ? 'bg-primary/10 text-on-surface' : 'bg-secondary/10 text-on-surface'
+    )}
+  >
+    <div className="flex items-center justify-between gap-2">
+      <span className="truncate text-xs font-black">{event.name}</span>
+      {event.check_in_open && <span className="h-2 w-2 shrink-0 rounded-full bg-secondary" />}
+    </div>
+    <p className="mt-1 truncate text-[10px] font-bold text-on-surface-variant">
+      {formatEventTimeRange(event.starts_at, event.ends_at)}
+    </p>
+  </button>
+);
 
 export const EventFormModal = ({
   title,
@@ -281,7 +502,7 @@ export const EventFormModal = ({
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="w-full max-w-2xl h-full bg-surface border-l border-white/5 shadow-2xl overflow-y-auto no-scrollbar"
+        className="w-full max-w-2xl h-full bg-surface-container-low shadow-2xl overflow-y-auto no-scrollbar"
       >
         <div className="p-12 space-y-12">
           <div className="flex items-center justify-between">
@@ -298,7 +519,7 @@ export const EventFormModal = ({
 
           <div className="space-y-8">
             <section className="space-y-6">
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/40 border-b border-white/5 pb-2">Basic Information</h3>
+              <h3 className="rounded-full bg-surface-container-lowest px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/50">Basic Information</h3>
               <div className="space-y-4">
                 <InputField label="Event Name">
                   <input
@@ -314,10 +535,11 @@ export const EventFormModal = ({
                     <select
                       className="w-full sunken-input appearance-none"
                       value={values.type}
-                      onChange={event => updateValue('type', event.target.value as EventFormValues['type'])}
+                      onChange={event => setValues(current => applyEventTypeDefaults(current, event.target.value as EventFormValues['type']))}
                     >
-                      <option value="chapter_meeting">Chapter Meeting</option>
-                      <option value="social">Social</option>
+                      {EVENT_TYPE_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </InputField>
                   <InputField label="Location">
@@ -334,7 +556,29 @@ export const EventFormModal = ({
             </section>
 
             <section className="space-y-6">
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/40 border-b border-white/5 pb-2">Attendance Policy</h3>
+              <h3 className="rounded-full bg-surface-container-lowest px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/50">Attendance Policy</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InputField label="Attendance Mode">
+                  <select
+                    className="w-full sunken-input appearance-none"
+                    value={values.attendanceMode}
+                    onChange={event => updateValue('attendanceMode', event.target.value as EventFormValues['attendanceMode'])}
+                  >
+                    {ATTENDANCE_MODE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </InputField>
+                <InputField label="Late Cutoff">
+                  <input
+                    required
+                    type="time"
+                    className="w-full sunken-input"
+                    value={values.lateCutoffTime}
+                    onChange={event => updateValue('lateCutoffTime', event.target.value)}
+                  />
+                </InputField>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <PolicyToggle
                   label="Mandatory Attendance"
@@ -358,7 +602,7 @@ export const EventFormModal = ({
             </section>
 
             <section className="space-y-6">
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/40 border-b border-white/5 pb-2">Schedule</h3>
+              <h3 className="rounded-full bg-surface-container-lowest px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/50">Schedule</h3>
               <div className="grid grid-cols-3 gap-4">
                 <InputField label="Date">
                   <input
@@ -388,15 +632,70 @@ export const EventFormModal = ({
                   />
                 </InputField>
               </div>
-              <InputField label="Expected Attendance">
-                <input
-                  min={1}
-                  type="number"
-                  className="w-full sunken-input"
-                  value={values.expectedCount}
-                  onChange={event => updateValue('expectedCount', Number(event.target.value))}
-                />
+              <InputField label="Expected Attendance Cache">
+                <div className="sunken-input min-h-12 py-3">
+                  <p className="text-sm font-black text-on-surface">{values.expectedCount}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12rem] text-on-surface-variant/50">
+                    Derived from roster policy when check-in opens.
+                  </p>
+                </div>
               </InputField>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <PolicyToggle
+                  label="Brother RSVP"
+                  description="Soft planning response. Does not create punitive expectation."
+                  checked={values.brotherRsvpEnabled}
+                  onChange={() => updateValue('brotherRsvpEnabled', !values.brotherRsvpEnabled)}
+                />
+                <PolicyToggle
+                  label="Guest Check-In"
+                  description="Enables future door or philanthropy guest ledger."
+                  checked={values.guestCheckInEnabled}
+                  onChange={() => updateValue('guestCheckInEnabled', !values.guestCheckInEnabled)}
+                />
+                <PolicyToggle
+                  label="Signup Enabled"
+                  description="Members sign up and become expected where policy allows."
+                  checked={values.signupEnabled}
+                  onChange={() => updateValue('signupEnabled', !values.signupEnabled)}
+                />
+                <PolicyToggle
+                  label="Service Hours"
+                  description="Checked-in members receive officer-set service credit."
+                  checked={values.countsTowardServiceHours}
+                  onChange={() => {
+                    updateValue('countsTowardServiceHours', !values.countsTowardServiceHours);
+                    updateValue('feedsServiceHours', !values.countsTowardServiceHours);
+                  }}
+                />
+              </div>
+              {(values.signupEnabled || values.countsTowardServiceHours) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {values.signupEnabled && (
+                    <InputField label="Signup Capacity">
+                      <input
+                        min={0}
+                        type="number"
+                        className="w-full sunken-input"
+                        value={values.signupCapacity ?? ''}
+                        onChange={event => updateValue('signupCapacity', event.target.value === '' ? null : Number(event.target.value))}
+                      />
+                    </InputField>
+                  )}
+                  {values.countsTowardServiceHours && (
+                    <InputField label="Hours Per Attendee">
+                      <input
+                        min={0}
+                        step="0.25"
+                        type="number"
+                        className="w-full sunken-input"
+                        value={values.hours ?? ''}
+                        onChange={event => updateValue('hours', event.target.value === '' ? null : Number(event.target.value))}
+                      />
+                    </InputField>
+                  )}
+                </div>
+              )}
               <InputField label="Officer Notes">
                 <textarea
                   className="w-full sunken-input min-h-28 resize-none"
@@ -406,6 +705,7 @@ export const EventFormModal = ({
                 />
               </InputField>
             </section>
+            <OperationalPreview values={values} />
           </div>
 
           <div className="pt-12 flex gap-4">
@@ -426,6 +726,43 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
     {children}
   </div>
 );
+
+const OperationalPreview = ({ values }: { values: EventFormValues }) => {
+  const facts = [
+    { label: 'Roster Source', value: formatAttendanceMode(values.attendanceMode) },
+    { label: 'QR Mode', value: values.qrEnabled ? `Enabled, cutoff ${values.lateCutoffTime}` : 'Disabled' },
+    { label: 'Excusals', value: values.allowExcusals ? 'Allowed' : 'Not allowed' },
+    { label: 'Guest Policy', value: values.guestPolicy.replaceAll('_', ' ') },
+    {
+      label: 'Tier Input',
+      value: values.feedsChapterMeetingRate
+        ? 'Chapter meeting rate'
+        : values.feedsServiceHours
+          ? 'Service hours'
+          : values.feedsRecruitmentRequirement
+            ? 'Recruitment count'
+            : 'None'
+    },
+    { label: 'Missed Obligation', value: values.feedsMissedObligationCounter ? 'Feeds counter' : 'No counter impact' }
+  ];
+
+  return (
+    <section className="rounded-3xl bg-surface-container-low p-6 space-y-5">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.24rem] text-secondary">Operational Preview</p>
+        <h3 className="mt-1 text-xl font-black tracking-tight text-on-surface">Before save</h3>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {facts.map(fact => (
+          <div key={fact.label} className="rounded-2xl bg-surface-container-lowest p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.14rem] text-on-surface-variant/50">{fact.label}</p>
+            <p className="mt-1 text-sm font-bold capitalize text-on-surface">{fact.value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const PolicyToggle = ({
   label,
@@ -455,3 +792,79 @@ const PolicyToggle = ({
     <p className="text-[10px] text-on-surface-variant leading-relaxed">{description}</p>
   </button>
 );
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function isSameMonth(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+function getCalendarDays(month: Date) {
+  const firstDay = startOfMonth(month);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  const days: Date[] = [];
+  for (let index = 0; index < 42; index += 1) {
+    const day = new Date(gridStart);
+    day.setDate(gridStart.getDate() + index);
+    days.push(day);
+  }
+
+  return days;
+}
+
+function groupEventsByDay(events: EventWithAttendance[]) {
+  const grouped = new Map<string, EventWithAttendance[]>();
+
+  for (const event of events) {
+    const key = event.event_date;
+    const dayEvents = grouped.get(key) ?? [];
+    dayEvents.push(event);
+    grouped.set(key, dayEvents);
+  }
+
+  for (const dayEvents of grouped.values()) {
+    dayEvents.sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }
+
+  return grouped;
+}
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date);
+}
+
+function toMonthFileSlug(date: Date) {
+  return new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric' })
+    .format(date)
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+}
+
+function downloadTextFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

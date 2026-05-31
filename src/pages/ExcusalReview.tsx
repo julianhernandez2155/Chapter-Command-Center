@@ -1,170 +1,280 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Timer, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  ChevronUp, 
-  Info,
-  Send
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Send,
+  ShieldCheck,
+  Timer,
+  XCircle
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  ExcusalStatus,
+  ReviewExcusal,
+  fetchExcusalsForReview,
+  getDisplayName,
+  getEventLabel,
+  getEventTimeLabel,
+  reviewExcusal
+} from '../lib/excusals';
 
 export const ExcusalReview = () => {
-  return (
-    <div className="max-w-screen-2xl mx-auto space-y-12">
-      {/* Amber Countdown Banner */}
-      <div className="bg-secondary-container text-on-secondary-container px-8 py-5 rounded-2xl flex items-center justify-between shadow-2xl shadow-secondary/10 border border-secondary/20">
-        <div className="flex items-center gap-4">
-          <Timer size={24} fill="currentColor" />
-          <p className="font-black uppercase tracking-widest text-sm">Ineligible List posts in 1d 14h 22m</p>
-        </div>
-        <button className="bg-on-secondary-container text-secondary-container px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2rem] transition-transform active:scale-95">
-          Preview List
-        </button>
-      </div>
+  const { member } = useAuth();
+  const [excusals, setExcusals] = useState<ReviewExcusal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-      {/* Page Header Section */}
+  const loadReviewQueue = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      setExcusals(await fetchExcusalsForReview());
+    } catch (err) {
+      console.error('Error loading excusal review queue:', err);
+      setError('Unable to load the excusal review queue.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadReviewQueue();
+  }, []);
+
+  const grouped = useMemo(() => ({
+    pending: excusals.filter(excusal => excusal.status === 'pending'),
+    reviewed: excusals.filter(excusal => excusal.status !== 'pending')
+  }), [excusals]);
+
+  const handleReview = async (
+    excusalId: string,
+    status: Extract<ExcusalStatus, 'approved' | 'denied'>,
+    note: string
+  ) => {
+    if (!member) return;
+
+    setSavingId(excusalId);
+    setError(null);
+
+    try {
+      await reviewExcusal(excusalId, member.id, status, note);
+      await loadReviewQueue();
+    } catch (err) {
+      console.error('Error reviewing excusal:', err);
+      setError('Unable to save the review decision. Check your review permission.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-screen-2xl space-y-12">
+      <section className="rounded-[2rem] bg-secondary/10 px-8 py-5 text-secondary">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <Timer size={24} />
+            <p className="text-sm font-black uppercase tracking-[0.18rem]">
+              Review before the weekly attendance list is published
+            </p>
+          </div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16rem]">
+            Pending {grouped.pending.length}
+          </p>
+        </div>
+      </section>
+
       <section className="space-y-4">
-        <h2 className="text-7xl font-black tracking-tighter uppercase leading-none text-on-surface">Excusal Requests</h2>
-        <p className="text-on-surface-variant max-w-2xl text-lg font-medium leading-relaxed">
-          Review absence requests before Monday 9:00 PM Ineligible List. Data is processed in real-time.
+        <p className="text-[10px] font-black uppercase tracking-[0.3rem] text-primary">Secretary Review</p>
+        <h1 className="text-5xl font-black uppercase tracking-tighter text-on-surface">Excusal Requests</h1>
+        <p className="max-w-2xl text-base font-semibold leading-7 text-on-surface-variant">
+          Approve or deny member absence requests before attendance closes and the weekly ineligible list is posted.
         </p>
       </section>
 
-      {/* Pending Section */}
-      <section className="space-y-8">
-        <div className="flex items-center gap-4">
-          <span className="w-3 h-3 rounded-full bg-primary shadow-[0_0_10px_rgba(196,30,58,0.8)]"></span>
-          <h3 className="tracking-[0.3rem] uppercase text-[10px] font-black text-primary">Pending Review (3)</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Request Card 1 */}
-          <div className="bg-surface-container-low p-10 rounded-2xl border border-white/5 flex flex-col gap-8 group transition-all duration-300 hover:bg-surface-container-high">
-            <div className="flex items-start justify-between">
-              <div className="flex gap-6">
-                <img className="w-16 h-16 rounded-full object-cover border-2 border-white/10" src="https://picsum.photos/seed/member1/200/200" alt="Member" />
-                <div>
-                  <h4 className="text-2xl font-black tracking-tight uppercase">Julian Thorne</h4>
-                  <p className="text-zinc-500 font-black text-[10px] tracking-[0.2rem] uppercase mt-1">Junior • Class of '25</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="bg-secondary/10 text-secondary px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-secondary/20">Chapter Meeting</span>
-                <p className="text-[9px] text-zinc-500 mt-3 tracking-widest uppercase font-bold">Dec 12, 7:00 PM</p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <p className="text-zinc-500 text-[9px] tracking-[0.3rem] uppercase font-black">Reason for Absence</p>
-              <p className="text-on-surface text-lg leading-relaxed italic font-medium">
-                "I have a mandatory biology lab final review session that was scheduled at the last minute by Professor Miller. Attendance is required for the curve. I can provide the syllabus screenshot if needed."
-              </p>
-            </div>
-            <div className="flex gap-4 pt-8 border-t border-white/5">
-              <button className="flex-1 bg-green-500/10 text-green-500 h-14 rounded-full font-black text-xs uppercase tracking-widest transition-all active:scale-95 hover:bg-green-500/20 flex items-center justify-center gap-3 border border-green-500/20">
-                <CheckCircle2 size={18} />
-                Approve
-              </button>
-              <button className="flex-1 bg-primary/10 text-primary h-14 rounded-full font-black text-xs uppercase tracking-widest transition-all active:scale-95 hover:bg-primary/20 flex items-center justify-center gap-3 border border-primary/20">
-                <XCircle size={18} />
-                Deny
-              </button>
-            </div>
-          </div>
+      {error && (
+        <section className="rounded-2xl bg-error/10 p-5 text-sm font-bold text-error">
+          {error}
+        </section>
+      )}
 
-          {/* Request Card 2 (Deny state mock) */}
-          <div className="bg-surface-container-low p-10 rounded-2xl border border-white/5 flex flex-col gap-8">
-            <div className="flex items-start justify-between">
-              <div className="flex gap-6">
-                <img className="w-16 h-16 rounded-full object-cover border-2 border-white/10" src="https://picsum.photos/seed/member2/200/200" alt="Member" />
-                <div>
-                  <h4 className="text-2xl font-black tracking-tight uppercase">Marcus Vane</h4>
-                  <p className="text-zinc-500 font-black text-[10px] tracking-[0.2rem] uppercase mt-1">Senior • Class of '24</p>
-                </div>
+      {loading ? (
+        <section className="flex items-center justify-center gap-3 rounded-[2rem] bg-surface-container-low p-12 text-on-surface-variant">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-xs font-black uppercase tracking-[0.18rem]">Loading review queue</span>
+        </section>
+      ) : (
+        <>
+          <section className="space-y-5">
+            <SectionHeader label="Pending Review" count={grouped.pending.length} tone="pending" />
+            {grouped.pending.length === 0 ? (
+              <EmptyQueue />
+            ) : (
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {grouped.pending.map(excusal => (
+                  <React.Fragment key={excusal.id}>
+                    <PendingReviewCard
+                      excusal={excusal}
+                      saving={savingId === excusal.id}
+                      onReview={handleReview}
+                    />
+                  </React.Fragment>
+                ))}
               </div>
-              <div className="text-right">
-                <span className="bg-secondary/10 text-secondary px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-secondary/20">Formal Dinner</span>
-                <p className="text-[9px] text-zinc-500 mt-3 tracking-widest uppercase font-bold">Dec 14, 6:00 PM</p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <p className="text-zinc-500 text-[9px] tracking-[0.3rem] uppercase font-black">Reason for Absence</p>
-              <p className="text-on-surface text-lg leading-relaxed italic font-medium">
-                "Family vacation started early. We're heading to the mountains and my flight leaves Thursday afternoon."
-              </p>
-            </div>
-            {/* Denial Input Logic Simulation */}
-            <div className="space-y-4 pt-8 border-t border-white/5">
-              <div className="bg-surface-container-lowest rounded-2xl p-6 border border-primary/20">
-                <p className="text-[9px] tracking-[0.2rem] uppercase text-primary mb-3 font-black">Denial Reason (Required)</p>
-                <textarea 
-                  className="w-full bg-transparent border-none focus:ring-0 text-on-surface text-sm p-0 placeholder:text-zinc-800 resize-none h-20 font-bold" 
-                  placeholder="Explain why this request is being denied..."
-                />
-              </div>
-              <div className="flex gap-4">
-                <button className="flex-1 bg-primary text-white h-14 rounded-full font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20">
-                  Confirm Denial
-                </button>
-                <button className="px-8 text-zinc-500 font-black text-xs uppercase tracking-widest hover:text-on-surface transition-colors">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+            )}
+          </section>
 
-      {/* Reviewed Section */}
-      <section className="space-y-8">
-        <div className="flex items-center justify-between border-b border-white/5 pb-6">
-          <div className="flex items-center gap-4">
-            <span className="w-3 h-3 rounded-full bg-zinc-800"></span>
-            <h3 className="tracking-[0.3rem] uppercase text-[10px] font-black text-zinc-500">Reviewed Requests (14)</h3>
-          </div>
-          <button className="text-zinc-500 hover:text-on-surface transition-colors flex items-center gap-2 font-black text-[10px] tracking-widest uppercase">
-            Hide Details
-            <ChevronUp size={14} />
-          </button>
-        </div>
-        
-        <div className="space-y-2">
-          <ReviewedRow name="Elara Vance" event="Recruitment Workshop" status="Approved" reviewer="IVP Sterling" date="Dec 10 • 4:12 PM" />
-          <ReviewedRow name="Leo Cassian" event="Philanthropy Night" status="Denied" reviewer="IVP Sterling" date="Dec 09 • 11:30 AM" />
-          <ReviewedRow name="Silas Thorne" event="Chapter Meeting" status="Approved" reviewer="IVP Sterling" date="Dec 09 • 9:15 AM" />
-        </div>
-        
-        <div className="flex justify-center pt-8">
-          <button className="bg-surface-container-high px-10 py-4 rounded-full text-[10px] font-black uppercase tracking-[0.2rem] hover:bg-zinc-800 transition-colors border border-white/5">
-            Load Full History
-          </button>
-        </div>
-      </section>
+          <section className="space-y-5">
+            <SectionHeader label="Reviewed Requests" count={grouped.reviewed.length} tone="reviewed" />
+            <div className="space-y-3">
+              {grouped.reviewed.slice(0, 12).map(excusal => (
+                <React.Fragment key={excusal.id}>
+                  <ReviewedRow excusal={excusal} />
+                </React.Fragment>
+              ))}
+              {grouped.reviewed.length === 0 && (
+                <div className="rounded-2xl bg-surface-container-low p-6 text-sm font-bold text-on-surface-variant">
+                  No reviewed requests yet.
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 };
 
-const ReviewedRow = ({ name, event, status, reviewer, date }: any) => (
-  <div className="grid grid-cols-12 gap-4 items-center px-8 py-5 hover:bg-surface-container-low transition-colors rounded-2xl border border-transparent hover:border-white/5 group">
-    <div className="col-span-3 flex items-center gap-4">
-      <div className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center overflow-hidden">
-        <img className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" src={`https://picsum.photos/seed/${name}/100/100`} alt={name} />
+const PendingReviewCard = ({
+  excusal,
+  saving,
+  onReview
+}: {
+  excusal: ReviewExcusal;
+  saving: boolean;
+  onReview: (excusalId: string, status: Extract<ExcusalStatus, 'approved' | 'denied'>, note: string) => Promise<void>;
+}) => {
+  const [note, setNote] = useState('');
+  const memberName = excusal.member ? getDisplayName(excusal.member) : 'Unknown member';
+  const canDeny = note.trim().length >= 8;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-[2rem] bg-surface-container-low p-8"
+    >
+      <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18rem] text-on-surface-variant">
+            {excusal.member?.suid ?? 'No SUID'} · Class of {excusal.member?.graduation_year ?? 'N/A'}
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-on-surface">{memberName}</h2>
+        </div>
+        <div className="text-left md:text-right">
+          <p className="text-[10px] font-black uppercase tracking-[0.14rem] text-secondary">
+            {getEventLabel(excusal.event)}
+          </p>
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12rem] text-on-surface-variant">
+            {getEventTimeLabel(excusal.event)}
+          </p>
+        </div>
       </div>
-      <span className="font-black text-sm uppercase tracking-tight">{name}</span>
-    </div>
-    <div className="col-span-2 text-[10px] font-black tracking-widest uppercase text-zinc-500">{event}</div>
-    <div className="col-span-2">
-      <span className={cn(
-        "font-black text-[10px] tracking-widest uppercase flex items-center gap-2",
-        status === 'Approved' ? "text-green-500" : "text-primary"
-      )}>
-        {status === 'Approved' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-        {status}
-      </span>
-    </div>
-    <div className="col-span-3 text-[10px] font-black tracking-widest uppercase text-zinc-500">Reviewed by {reviewer}</div>
-    <div className="col-span-2 text-right text-[10px] font-black tracking-widest uppercase text-zinc-800">{date}</div>
+
+      <div className="mt-7 rounded-2xl bg-surface-container-lowest p-5">
+        <p className="text-[9px] font-black uppercase tracking-[0.14rem] text-on-surface-variant/50">Reason</p>
+        <p className="mt-2 text-base font-semibold leading-7 text-on-surface">{excusal.reason}</p>
+        {excusal.supporting_note && (
+          <p className="mt-4 text-sm font-semibold leading-6 text-on-surface-variant">{excusal.supporting_note}</p>
+        )}
+      </div>
+
+      <label className="mt-5 block space-y-2">
+        <span className="ml-4 text-[10px] font-black uppercase tracking-[0.14rem] text-on-surface-variant/50">Review Note</span>
+        <textarea
+          className="min-h-24 w-full resize-none sunken-input"
+          placeholder="Required for denial. Optional for approval."
+          value={note}
+          onChange={event => setNote(event.target.value)}
+        />
+      </label>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <button
+          disabled={saving}
+          onClick={() => void onReview(excusal.id, 'approved', note)}
+          className="flex min-h-14 flex-1 items-center justify-center gap-3 rounded-full bg-green-500/10 text-xs font-black uppercase tracking-[0.14rem] text-green-500 disabled:opacity-40"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={17} />}
+          Approve
+        </button>
+        <button
+          disabled={saving || !canDeny}
+          onClick={() => void onReview(excusal.id, 'denied', note)}
+          className="flex min-h-14 flex-1 items-center justify-center gap-3 rounded-full bg-primary/10 text-xs font-black uppercase tracking-[0.14rem] text-primary disabled:opacity-40"
+        >
+          <Send size={17} />
+          Deny With Note
+        </button>
+      </div>
+    </motion.article>
+  );
+};
+
+const ReviewedRow = ({ excusal }: { excusal: ReviewExcusal }) => {
+  const status = excusal.status;
+  const memberName = excusal.member ? getDisplayName(excusal.member) : 'Unknown member';
+  const reviewerName = excusal.reviewer ? getDisplayName(excusal.reviewer) : 'Officer';
+
+  return (
+    <article className="grid grid-cols-1 gap-4 rounded-2xl bg-surface-container-low px-6 py-5 md:grid-cols-12 md:items-center">
+      <div className="md:col-span-3">
+        <p className="text-sm font-black text-on-surface">{memberName}</p>
+        <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12rem] text-on-surface-variant/50">{excusal.member?.suid}</p>
+      </div>
+      <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant md:col-span-3">
+        {excusal.event?.name ?? 'Unknown event'}
+      </p>
+      <div className="md:col-span-2">
+        <span className={cn(
+          'inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12rem]',
+          status === 'approved' ? 'text-green-500' : 'text-primary'
+        )}>
+          {status === 'approved' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+          {status}
+        </span>
+      </div>
+      <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant md:col-span-3">
+        Reviewed by {reviewerName}
+      </p>
+      <p className="text-[10px] font-black uppercase tracking-[0.12rem] text-on-surface-variant/50 md:col-span-1 md:text-right">
+        {excusal.reviewed_at ? formatShortDate(excusal.reviewed_at) : ''}
+      </p>
+    </article>
+  );
+};
+
+const SectionHeader = ({ label, count, tone }: { label: string; count: number; tone: 'pending' | 'reviewed' }) => (
+  <div className="flex items-center gap-4">
+    <span className={cn('h-3 w-3 rounded-full', tone === 'pending' ? 'bg-primary' : 'bg-on-surface-variant/30')} />
+    <h2 className={cn(
+      'text-[10px] font-black uppercase tracking-[0.3rem]',
+      tone === 'pending' ? 'text-primary' : 'text-on-surface-variant'
+    )}>{label} ({count})</h2>
   </div>
 );
+
+const EmptyQueue = () => (
+  <div className="rounded-[2rem] bg-surface-container-low p-10 text-center">
+    <ShieldCheck className="mx-auto text-green-500" size={34} />
+    <p className="mt-4 text-sm font-bold text-on-surface-variant">No pending excusals require review.</p>
+  </div>
+);
+
+const formatShortDate = (isoDate: string) =>
+  new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(isoDate));

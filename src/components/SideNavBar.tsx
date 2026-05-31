@@ -14,7 +14,10 @@ import {
   History,
   CheckSquare,
   FileEdit,
+  FileClock,
+  ClipboardList,
   Clock,
+  HeartHandshake,
   Layers,
   BarChart3,
   PenTool,
@@ -30,6 +33,7 @@ export const SideNavBar = () => {
   const canManageRecords = canAny(['attendance.import', 'forms.builder.manage', 'positions.manage']);
   const canReviewExcusals = can('excusals.review');
   const canViewFinance = can('finance.dues.view');
+  const canViewServiceConsole = roles.some(role => ['president', 'secretary', 'community_service_chairman', 'philanthropy_chairman'].includes(role));
   const canUseOfficerWorkflows = canAny(['forms.intake', 'reports.submit', 'reports.view_all', 'forms.responses.view']);
   const displayName = member
     ? `${member.preferred_name || member.legal_first_name} ${member.legal_last_name}`
@@ -58,6 +62,10 @@ export const SideNavBar = () => {
         <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Command" />
         {can('attendance.import') && <NavItem to="/attendance" icon={<CheckSquare size={20} />} label="Attendance" />}
         <NavItem to="/events" icon={<Calendar size={20} />} label="Events" />
+        <NavItem to="/service" icon={<HeartHandshake size={20} />} label="Service" />
+        <NavItem to="/service/external" icon={<FileClock size={20} />} label="External" />
+        <NavItem to="/service/reports" icon={<ClipboardList size={20} />} label="Service History" />
+        {canViewServiceConsole && <NavItem to="/service/console" icon={<BarChart3 size={20} />} label="Service Console" />}
         {can('roster.view') && <NavItem to="/roster" icon={<Users size={20} />} label="Members" />}
         
         <div className="py-2 opacity-20 group-hover:opacity-100 transition-opacity">
@@ -161,7 +169,7 @@ const NavItem = ({ to, icon, label }: { to: string; icon: React.ReactNode; label
     className={({ isActive }) => cn(
       "flex items-center gap-4 p-3 rounded-xl transition-all duration-200",
       isActive 
-        ? "bg-primary/10 text-primary border-r-2 border-primary" 
+        ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(196,30,58,0.16)]"
         : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
     )}
   >

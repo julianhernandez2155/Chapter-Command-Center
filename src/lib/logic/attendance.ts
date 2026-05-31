@@ -20,115 +20,158 @@ export function dedupeAttendance<T extends { eventId: string; memberId: string; 
   return [...byKey.values()];
 }
 
-export type CsvMember = { id: string; name: string; suid: string };
+export type CsvMember = { id: string; name: string; suid: string; googleEmail?: string };
+export type CsvAttendanceIdentity = {
+  rawValue: string;
+  suid: string | null;
+  email: string | null;
+  rowNumber: number;
+};
 export type CsvMatch = {
-  rawName: string;
+  rawValue: string;
+  rowNumber: number;
   memberId: string | null;
   memberName: string | null;
-  score: number;
-  confidence: "high" | "medium" | "low";
+  suid: string | null;
+  email: string | null;
+  confidence: "high" | "low";
+  reason: "suid" | "email" | "missing_identity" | "no_match" | "duplicate_identity";
 };
 
-export function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove accents
-    .replace(/[^a-z0-9 ]/g, "")      // remove special chars
-    .trim();
+export function normalizeAttendanceEmail(value: string): string | null {
+  const email = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
-function getSimilarity(s1: string, s2: string): number {
-  const norm1 = normalizeName(s1);
-  const norm2 = normalizeName(s2);
-  if (norm1 === norm2) return 1.0;
-  
-  // Exact containment bonus
-  if (norm1.includes(norm2) || norm2.includes(norm1)) {
-    const minLen = Math.min(norm1.length, norm2.length);
-    const maxLen = Math.max(norm1.length, norm2.length);
-    return maxLen > 0 ? minLen / maxLen : 0;
-  }
+export function normalizeAttendanceSuid(value: string): string | null {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 6 && digits.length <= 9 ? digits : null;
+}
 
-  // Levenshtein distance
-  const track = Array(norm2.length + 1).fill(null).map(() => Array(norm1.length + 1).fill(null));
-  for (let i = 0; i <= norm1.length; i += 1) track[0][i] = i;
-  for (let j = 0; j <= norm2.length; j += 1) track[j][0] = j;
-  for (let j = 1; j <= norm2.length; j += 1) {
-    for (let i = 1; i <= norm1.length; i += 1) {
-      const indicator = norm1[i - 1] === norm2[j - 1] ? 0 : 1;
-      track[j][i] = Math.min(
-        track[j][i - 1] + 1, // deletion
-        track[j - 1][i] + 1, // insertion
-        track[j - 1][i - 1] + indicator, // substitution
-      );
+function parseCsvLine(row: string): string[] {
+  const cells: string[] = [];
+  let currentCell = "";
+  let inQuotes = false;
+
+  for (let charIndex = 0; charIndex < row.length; charIndex += 1) {
+    const char = row[charIndex];
+    const nextChar = row[charIndex + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      currentCell += '"';
+      charIndex += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      cells.push(currentCell.trim().replace(/^["']|["']$/g, ""));
+      currentCell = "";
+    } else {
+      currentCell += char;
     }
   }
-  const distance = track[norm2.length][norm1.length];
-  const maxLen = Math.max(norm1.length, norm2.length);
-  return maxLen > 0 ? (maxLen - distance) / maxLen : 0;
+
+  cells.push(currentCell.trim().replace(/^["']|["']$/g, ""));
+  return cells;
 }
 
-export function parseAttendanceCsv(csv: string): string[] {
+export function parseAttendanceCsv(csv: string): CsvAttendanceIdentity[] {
   const lines = csv.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.length === 0) return [];
-  
-  // Parse headers from the first line
-  const headers = lines[0].split(',').map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
-  let nameIndex = headers.findIndex(h => h === 'name' || h === 'member' || h === 'full name');
-  if (nameIndex === -1) nameIndex = 0; // Default to first column if header not matched
-  
-  const names: string[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    // Basic CSV cell split handling simple quotes
-    const row = lines[i];
-    const cells: string[] = [];
-    let currentCell = '';
-    let inQuotes = false;
-    
-    for (let charIndex = 0; charIndex < row.length; charIndex++) {
-      const char = row[charIndex];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        cells.push(currentCell.trim());
-        currentCell = '';
-      } else {
-        currentCell += char;
-      }
-    }
-    cells.push(currentCell.trim());
-    
-    if (cells[nameIndex]) {
-      names.push(cells[nameIndex].replace(/^["']|["']$/g, '').trim());
-    }
+
+  const headers = parseCsvLine(lines[0]).map(header => header.trim().toLowerCase());
+  const suidIndex = headers.findIndex(header => ["suid", "student id", "student_id"].includes(header));
+  const emailIndex = headers.findIndex(header => ["email", "school email", "school_email", "google_email"].includes(header));
+
+  if (suidIndex === -1 && emailIndex === -1) return [];
+
+  const identities: CsvAttendanceIdentity[] = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const cells = parseCsvLine(lines[index]);
+    const rawSuid = suidIndex >= 0 ? cells[suidIndex] ?? "" : "";
+    const rawEmail = emailIndex >= 0 ? cells[emailIndex] ?? "" : "";
+    const suid = normalizeAttendanceSuid(rawSuid);
+    const email = normalizeAttendanceEmail(rawEmail);
+
+    identities.push({
+      rawValue: suid ?? email ?? (rawSuid.trim() || rawEmail.trim()),
+      suid,
+      email,
+      rowNumber: index + 1
+    });
   }
-  return names;
+
+  return identities;
 }
 
-export function matchCsvNames(rawNames: string[], members: CsvMember[]): CsvMatch[] {
-  return rawNames.map((rawName) => {
-    let bestMatch: CsvMember | null = null;
-    let bestScore = 0;
+export function matchCsvIdentities(identities: CsvAttendanceIdentity[], members: CsvMember[]): CsvMatch[] {
+  const memberBySuid = new Map(members.map(member => [member.suid, member]));
+  const memberByEmail = new Map(
+    members
+      .map(member => [member.googleEmail ? normalizeAttendanceEmail(member.googleEmail) : null, member] as const)
+      .filter((entry): entry is [string, CsvMember] => Boolean(entry[0]))
+  );
+  const seenIdentities = new Set<string>();
+  const seenMemberIds = new Set<string>();
 
-    for (const member of members) {
-      const score = getSimilarity(rawName, member.name);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = member;
-      }
+  return identities.map(identity => {
+    const identityKey = identity.suid ?? identity.email;
+    if (!identityKey) {
+      return {
+        rawValue: identity.rawValue,
+        rowNumber: identity.rowNumber,
+        memberId: null,
+        memberName: null,
+        suid: identity.suid,
+        email: identity.email,
+        confidence: "low",
+        reason: "missing_identity"
+      };
     }
 
-    if (!bestMatch || bestScore < 0.45) {
-      return { rawName, memberId: null, memberName: null, score: 0, confidence: "low" };
+    if (seenIdentities.has(identityKey)) {
+      return {
+        rawValue: identity.rawValue,
+        rowNumber: identity.rowNumber,
+        memberId: null,
+        memberName: null,
+        suid: identity.suid,
+        email: identity.email,
+        confidence: "low",
+        reason: "duplicate_identity"
+      };
     }
+
+    seenIdentities.add(identityKey);
+    const suidMatch = identity.suid ? memberBySuid.get(identity.suid) : null;
+    const emailMatch = identity.email ? memberByEmail.get(identity.email) : null;
+    const match = suidMatch ?? emailMatch ?? null;
+
+    if (match && seenMemberIds.has(match.id)) {
+      return {
+        rawValue: identity.rawValue,
+        rowNumber: identity.rowNumber,
+        memberId: null,
+        memberName: match.name,
+        suid: identity.suid,
+        email: identity.email,
+        confidence: "low",
+        reason: "duplicate_identity"
+      };
+    }
+
+    if (match) seenMemberIds.add(match.id);
 
     return {
-      rawName,
-      memberId: bestMatch.id,
-      memberName: bestMatch.name,
-      score: bestScore,
-      confidence: bestScore > 0.85 ? "high" : bestScore >= 0.6 ? "medium" : "low",
+      rawValue: identity.rawValue,
+      rowNumber: identity.rowNumber,
+      memberId: match?.id ?? null,
+      memberName: match?.name ?? null,
+      suid: identity.suid,
+      email: identity.email,
+      confidence: match ? "high" : "low",
+      reason: match ? (suidMatch ? "suid" : "email") : "no_match"
     };
   });
 }
+
+export const matchCsvNames = matchCsvIdentities;

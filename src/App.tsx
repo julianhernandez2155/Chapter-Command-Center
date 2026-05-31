@@ -16,6 +16,11 @@ import { MemberProfile } from './pages/MemberProfile';
 import { Events } from './pages/Events';
 import { EventDetails } from './pages/EventDetails';
 import { CheckIn } from './pages/CheckIn';
+import { SocialDoorList } from './pages/SocialDoorList';
+import { CommunityService } from './pages/CommunityService';
+import { ServiceChairmanConsole } from './pages/ServiceChairmanConsole';
+import { ExternalPhilanthropy } from './pages/ExternalPhilanthropy';
+import { ServiceReports } from './pages/ServiceReports';
 import { ImportAttendance } from './pages/ImportAttendance';
 import { FormIntake } from './pages/FormIntake';
 import { FormStatus } from './pages/FormStatus';
@@ -111,10 +116,13 @@ const AppContent = () => {
   }
 
   // 4. Check-In page is full-screen, open to all authenticated/onboarded users
-  if (location.pathname === '/check-in') {
+  if (location.pathname === '/check-in' || location.pathname.startsWith('/check-in/')) {
     return (
       <ProtectedRoute>
-        <CheckIn />
+        <Routes location={location}>
+          <Route path="/check-in" element={<CheckIn />} />
+          <Route path="/check-in/:token" element={<CheckIn />} />
+        </Routes>
       </ProtectedRoute>
     );
   }
@@ -127,7 +135,7 @@ const AppContent = () => {
       <div className="flex min-h-screen bg-surface selection:bg-primary/30">
         <SideNavBar />
         <NotificationBell />
-        <div className="flex-1 pl-20 transition-all duration-300">
+        <div className="min-w-0 flex-1 pl-20 transition-all duration-300">
           <Routes location={location}>
             <Route path="/admin/members/verification" element={
               <ProtectedRoute permission="admin.members.view">
@@ -145,9 +153,9 @@ const AppContent = () => {
     <div className="flex min-h-screen bg-surface selection:bg-primary/30">
       <SideNavBar />
       <NotificationBell />
-      <div className="flex-1 pl-20 transition-all duration-300">
+      <div className="min-w-0 flex-1 pl-20 transition-all duration-300">
         {showTopBarSearch && <TopAppBar showSearch />}
-        <main className={cn(showTopBarSearch ? 'pt-32' : 'pt-16', 'pb-20 px-12')}>
+        <main className={cn(showTopBarSearch ? 'pt-32' : 'pt-16', 'pb-20 px-4 sm:px-8 lg:px-12')}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -180,6 +188,31 @@ const AppContent = () => {
                 <Route path="/events/:id" element={
                   <ProtectedRoute>
                     <EventDetails />
+                  </ProtectedRoute>
+                } />
+                <Route path="/events/:id/door" element={
+                  <ProtectedRoute>
+                    <SocialDoorList />
+                  </ProtectedRoute>
+                } />
+                <Route path="/service" element={
+                  <ProtectedRoute>
+                    <CommunityService />
+                  </ProtectedRoute>
+                } />
+                <Route path="/service/console" element={
+                  <ProtectedRoute>
+                    <ServiceChairmanConsole />
+                  </ProtectedRoute>
+                } />
+                <Route path="/service/external" element={
+                  <ProtectedRoute>
+                    <ExternalPhilanthropy />
+                  </ProtectedRoute>
+                } />
+                <Route path="/service/reports" element={
+                  <ProtectedRoute>
+                    <ServiceReports />
                   </ProtectedRoute>
                 } />
                 <Route path="/profile" element={

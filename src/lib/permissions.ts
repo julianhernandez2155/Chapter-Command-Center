@@ -71,6 +71,7 @@ export const OFFICER_POSITION_SLUGS = [
 ] as const;
 
 const OFFICER_WORKFLOW_PERMISSIONS: Permission[] = [
+  'events.create',
   'forms.intake',
   'forms.responses.view',
   'reports.submit',
